@@ -13,7 +13,7 @@ library(furrr)
 #synfax gtfs
 
 gtfs_parameters =  list(mode_numbers = unname(unlist(synfaxgtfs::get_settings('mode_numbers'))),
-                        day =  'monday',
+                        day =  'tuesday',
                         city = unname(unlist(synfaxgtfs::get_settings('city'))))
 
 isochrone_params = list(start_time_ = synfaxgtfs::get_settings('start_time_')[[1]][1],
@@ -28,8 +28,12 @@ arrival_time_dict = synfaxgtfs:::.pkgenv$arrival_time_dict
 
 #.pkgenv = synfaxgtfs:::.pkgenv
 xz <- load_place_registry_parallel(unique_stops, isochrone_params, arrival_time_dict)
+rm(xz)
 
 plan('default')
+
+gc()
+
 
 #synfaxgtfs::place_registry_2(unique_stops, isochrone_params, arrival_time_dict)
 
@@ -67,8 +71,6 @@ dzns_sf = dzns_sf %>%
   st_transform('wgs84') %>%
   select(DZN_CODE21, AREASQKM21, total_employment)
 
-
-
 #load mesh block geometries
 mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
   filter(GCC_NAME21 == "Greater Melbourne", SA1_CODE21 %in% dwelling_sa1s )
@@ -95,45 +97,6 @@ joined_buffered_mb_df = joined_buffered_mb_sf %>%
 #this says, for any given MB, which stops can I access?
 mb_to_stops = setNames(joined_buffered_mb_df$stops_inside, joined_buffered_mb_df$MB_CODE21)
 
-
-# gtfs_pre_stops %>% walk(function(starting_stop) {
-#   starting_stop = as.character(starting_stop)
-#
-#   message(starting_stop)
-#
-#   isochrone_results <- synfaxgtfs::generate_isochrone(starting_stop)
-#
-#   slim_results = isochrone_results %>%
-#     st_drop_geometry() %>%
-#     select(stop_id, travel_time, path)
-#
-#   fwrite(slim_results, paste0('stop_isochrones/',as.character(starting_stop), '_isochrone.csv'))
-#
-#   melbourne_utm <- "EPSG:32755"  # UTM Zone 55S
-#
-#   buffered_isochrones <- isochrone_results %>%
-#     st_transform(crs = melbourne_utm) %>%  # Project to Melbourne's UTM zone
-#     st_buffer(dist = 450) %>%             # 450 meters in UTM
-#     st_union() %>%
-#     st_transform(st_crs(isochrone_results)) %>%  # Transform back
-#     st_as_sf()
-#
-#   intersectioned <- st_intersection(buffered_isochrones, dzns_sf)
-#
-#   intersectioned$intersection_area = st_area(intersectioned$x)
-#   intersectioned$pc_intersection = as.numeric(((intersectioned$intersection_area/10^6) / intersectioned$AREASQKM21))
-#
-#   intersectioned$weighted_employment = intersectioned$pc_intersection * intersectioned$total_employment
-#
-#   intersectioned_simple = data.frame(stop_id = starting_stop, total_accessible_employment = sum(intersectioned$total_employment))
-#
-#
-#   saveRDS(intersectioned_simple, paste0('stop_job_accessibility_simple/', starting_stop, '_job_access.Rdata'))
-#   #saveRDS(intersectioned, paste0('stop_job_accessibility/', starting_stop, '_job_access.Rdata'))
-#
-# }, .progress = T)
-
-
 # Define the processing function
 process_stop <- function(starting_stop, isochrone_params, full_env) {
   starting_stop <- as.character(starting_stop)
@@ -150,34 +113,6 @@ process_stop <- function(starting_stop, isochrone_params, full_env) {
 
   fwrite(slim_results, paste0('stop_isochrones/', starting_stop, '_isochrone.csv'))
 
-  # Buffer and transform
-  melbourne_utm <- "EPSG:32755"  # UTM Zone 55S
-  buffered_isochrones <- isochrone_results %>%
-    st_transform(crs = melbourne_utm) %>%
-    st_buffer(dist = 450) %>%
-    st_union() %>%
-    st_transform(st_crs(isochrone_results)) %>%
-    st_as_sf()
-
-  buffered_isochrones = st_make_valid(buffered_isochrones)
-
-  # Intersection calculations
-  intersectioned <- st_intersection(buffered_isochrones, dzns_sf)
-  intersectioned$intersection_area <- st_area(intersectioned$x)
-  intersectioned$pc_intersection <- as.numeric(
-    ((intersectioned$intersection_area/10^6) / intersectioned$AREASQKM21)
-  )
-  intersectioned$weighted_employment <- intersectioned$pc_intersection * intersectioned$total_employment
-
-  intersectioned_simple <- data.frame(
-    stop_id = starting_stop,
-    total_accessible_employment = sum(intersectioned$total_employment)
-  )
-
-  # Save results
-  saveRDS(intersectioned_simple,
-          paste0('stop_job_accessibility_simple/', starting_stop, '_job_access.Rdata'))
-
   # Return ID for progress tracking
   return(starting_stop)
 }
@@ -188,18 +123,17 @@ process_stop <- function(starting_stop, isochrone_params, full_env) {
 
 plan(multisession, workers = parallel::detectCores() - 1)
 
-# Make sure isochrone_params is well-defined before using it
-print("Isochrone parameters:")
-print(isochrone_params)
-
 full_env <- synfaxgtfs:::.pkgenv
-
 options(future.globals.maxSize = 5 * 1024^3)
+
 
 stops_completed = list.files('stop_isochrones') %>% str_replace('_isochrone.csv', '')
 stops_remaining = setdiff(gtfs_pre_stops, stops_completed)
 
-# Then use future_map with explicit passing of parameters
+stops_no_rbus = full_env$stops_no_rbus$stop_id
+stops_remaining = intersect(stops_no_rbus, stops_remaining)
+
+# Then use future_map with explicit passing of parameters1
 results <- future_map(
   stops_remaining,
   function(stop_id) {
@@ -237,16 +171,37 @@ mb_to_employment <- names(mb_to_stops) %>% map_dfr(function(MB_CODE21) {
   return(stop_accessibility)
 }, .progress = T)
 
-write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp')
+#write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp')
 
-mb_sf_em <- mb_sf %>% left_join(mb_to_employment, by = 'MB_CODE21')
+#mb_sf_em <- mb_sf %>% left_join(mb_to_employment, by = 'MB_CODE21')
+
+isochrone_registry <- list.files('stop_isochrones')  %>% map(function(path) {
+  fread(paste0('stop_isochrones/', path))[,1:2]
+}, .progress = T) %>% setNames( (list.files('stop_isochrones') %>% str_replace('_isochrone.csv', '')) )
 
 
-mb_pal <- colorNumeric(palette = 'Reds', domain = mb_sf_em$total_em)
-leaflet(mb_sf_em) %>%
-  addProviderTiles('CartoDB.Positron') %>%
-  addPolygons(data = mb_sf_em, fillColor = ~mb_pal(mb_sf_em$total_em), fillOpacity = 0.7, weight = 0.1, color = 'black', opacity = 0.2)
-map_xyz <- function(xyz) {
+plan(multisession, workers = parallel::detectCores() - 1)
+results <- future_map(
+  names(mb_to_stops),
+  function(MB_CODE21) {
+    # Explicitly pass both parameters to process_stop
+    calculate_mesh_block_employment(MB_CODE21)
+  },
+  .options = furrr_options(seed = TRUE),
+  .progress = TRUE
+)
+plan('default')
+
+draw_employment_access <- function() {
+  mb_pal <- colorNumeric(palette = 'Reds', domain = mb_sf_em$total_em)
+  leaflet(mb_sf_em) %>%
+    addProviderTiles('CartoDB.Positron') %>%
+    addPolygons(data = mb_sf_em, fillColor = ~mb_pal(mb_sf_em$total_em), fillOpacity = 0.7, weight = 0.1, color = 'black', opacity = 0.2)
+
+
+}
+
+draw_isochrone <- function(xyz) {
 
   employment_pal = colorBin('Reds', bins = 10, domain = xyz$weighted_employment)
 
@@ -268,3 +223,5 @@ map_xyz <- function(xyz) {
 }
 
 mp <- function(x) {leaflet(x) %>% addProviderTiles('CartoDB.Positron') %>% addPolygons()}
+
+
