@@ -133,7 +133,7 @@ stops_remaining = setdiff(gtfs_pre_stops, stops_completed)
 stops_no_rbus = full_env$stops_no_rbus$stop_id
 stops_remaining = intersect(stops_no_rbus, stops_remaining)
 
-# Then use future_map with explicit passing of parameters1
+# Then use future_map with explicit passing of parameters
 results <- future_map(
   stops_remaining,
   function(stop_id) {
@@ -146,35 +146,40 @@ results <- future_map(
 
 plan('default')
 
-stop_accessibility_lookup <- gtfs_pre_stops %>% map(function(stop) {
-
-  file_path <- paste0('stop_job_accessibility_simple/',stop, '_job_access.Rdata' )
-  does_file_exist <- file.exists(file_path)
-
-  if(does_file_exist) {
-    job_access <- readRDS(file_path)
-  } else {
-    job_access = NULL
-  }
-
-  return(job_access)
-
-}) %>% setNames(gtfs_pre_stops)
-
-mb_to_employment <- names(mb_to_stops) %>% map_dfr(function(MB_CODE21) {
-  stops_in_mb = mb_to_stops[as.character(MB_CODE21)][[1]]
-
-  stop_accessibility = bind_rows(stop_accessibility_lookup[stops_in_mb])$total_accessible_employment
-
-  stop_accessibility = data.frame(MB_CODE21 = MB_CODE21, total_em = mean(stop_accessibility, na.rm = T))
-
-  return(stop_accessibility)
-}, .progress = T)
+#for each stop, read the isochrone file, and set the stops it can reach to a named list
+# stop_accessibility_lookup <- gtfs_pre_stops %>% map(function(stop) {
+#
+#   file_path <- paste0('stop_job_accessibility_simple/',stop, '_job_access.Rdata' )
+#   does_file_exist <- file.exists(file_path)
+#
+#   if(does_file_exist) {
+#     job_access <- readRDS(file_path)
+#   } else {
+#     job_access = NULL
+#   }
+#
+#   return(job_access)
+#
+# }) %>% setNames(gtfs_pre_stops)
+#
+# #for each mesh block, get the stops nearby it
+# # for each stop, find what is accessible, using the loop above.
+# #then bind a 1x2 df to a list.
+# mb_to_employment <- names(mb_to_stops) %>% map_dfr(function(MB_CODE21) {
+#   stops_in_mb = mb_to_stops[as.character(MB_CODE21)][[1]]
+#
+#   stop_accessibility = bind_rows(stop_accessibility_lookup[stops_in_mb])$total_accessible_employment
+#
+#   stop_accessibility = data.frame(MB_CODE21 = MB_CODE21, total_em = mean(stop_accessibility, na.rm = T))
+#
+#   return(stop_accessibility)
+# }, .progress = T)
 
 #write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp')
 
 #mb_sf_em <- mb_sf %>% left_join(mb_to_employment, by = 'MB_CODE21')
 
+#for each isochrone file, place it into a named list.
 isochrone_registry <- list.files('stop_isochrones')  %>% map(function(path) {
   fread(paste0('stop_isochrones/', path))[,1:2]
 }, .progress = T) %>% setNames( (list.files('stop_isochrones') %>% str_replace('_isochrone.csv', '')) )
@@ -184,7 +189,6 @@ plan(multisession, workers = parallel::detectCores() - 1)
 results <- future_map(
   names(mb_to_stops),
   function(MB_CODE21) {
-    # Explicitly pass both parameters to process_stop
     calculate_mesh_block_employment(MB_CODE21)
   },
   .options = furrr_options(seed = TRUE),
