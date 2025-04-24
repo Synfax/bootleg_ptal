@@ -1,6 +1,8 @@
 stop_isochrones/
 stop_job_accessibility/
-stop_job_accessibility_simply/
+stop_job_accessibility_simple/
+MB_accessibility/
+rdata_output/
 sf_output/
 *.Rdata
 dwelling_job_access.Rproj
