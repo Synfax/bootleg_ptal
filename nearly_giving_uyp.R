@@ -24,6 +24,7 @@ nearly_giving_up <- function(start_stop_id, isochrone_params, full_env, restrict
   correction_factor = full_duration - arrival_time
 
   p1 <- memoized_get_place(current_stop_id, arrival_time)
+  p1$stop_id = as.character(p1$stop_id)
 
   if(restrict_initial_xfer) {
     p1 <- p1 %>% group_by(trip_id) %>% filter(any(stop_id == current_stop_id)) %>% ungroup()
@@ -35,74 +36,82 @@ nearly_giving_up <- function(start_stop_id, isochrone_params, full_env, restrict
 
   for(i in 1:nrow(p1)) {
 
-    current_stop_id = as.character(p1$stop_id[i])
+    current_stop_id = p1$stop_id[i]
     r_arrival_time = p1$arrival_time[i]
 
     min_to_limit = (as.numeric(as.duration(isochrone_params$time_limit_ - r_arrival_time), 'minutes'))
-    existing_results <- names(result_env)
+    #existing_results <- names(result_env)
 
-
-    if(current_stop_id %in% existing_results) {
-      if(min_to_limit <= result_env[[current_stop_id]]$arrival_time ) {
+    if(exists(current_stop_id, envir = visited_stops, inherits = FALSE)) {
+      if(min_to_limit <= result_env[[current_stop_id]]$arrival_time) {
         next()
       }
     }
-
-    result_env = checkres(result_env, current_stop_id = current_stop_id,
-                          r_arrival_time = min_to_limit)
+    # Direct assignment
+    result_env[[current_stop_id]] <- list(
+      arrival_time = min_to_limit
+    )
+    visited_stops[[current_stop_id]] <- TRUE
 
     min_to_limit = min_to_limit - xfer_penalty_m
-
+    if(min_to_limit <= 1) next()
 
     #p2 = place_registry[[as.character(current_stop_id)]][as.character(min_to_limit)][[1]]
     p2 <- memoized_get_place(current_stop_id, min_to_limit)
+    p2$stop_id = as.character(p2$stop_id)
 
     if(is.null(p2)) next()
     if(nrow(p2) > 0) {
       for(j in 1:nrow(p2)) {
-        current_stop_id = as.character(p2$stop_id[j])
+        current_stop_id = p2$stop_id[j]
         r_arrival_time = p2$arrival_time[j]
 
         min_to_limit = (as.numeric(as.duration(isochrone_params$time_limit_ - r_arrival_time), 'minutes'))
 
-        existing_results <- names(result_env)
-
-        if(current_stop_id %in% existing_results) {
-          if(min_to_limit <= result_env[[current_stop_id]]$arrival_time ) {
+        if(exists(current_stop_id, envir = visited_stops, inherits = FALSE)) {
+          if(min_to_limit <= result_env[[current_stop_id]]$arrival_time) {
             next()
           }
         }
 
-        result_env = checkres(result_env, current_stop_id = current_stop_id,
-                              r_arrival_time = min_to_limit)
+        # Direct assignment
+        result_env[[current_stop_id]] <- list(
+          arrival_time = min_to_limit
+        )
+        visited_stops[[current_stop_id]] <- TRUE
 
         min_to_limit = min_to_limit - xfer_penalty_m
 
+        if(min_to_limit <= 1) next()
+
         #p3 = place_registry[[as.character(current_stop_id)]][as.character(min_to_limit)][[1]]
         p3 <- memoized_get_place(current_stop_id, min_to_limit)
+        p3$stop_id = as.character(p3$stop_id)
 
-        if(is.null(p3)) next()
+        if(is.null(p3)) {
+          next()
+        }
+
+        p3$min_to_limit =  as.numeric(as.duration(isochrone_params$time_limit_ - p3$arrival_time), 'minutes')
 
         if(nrow(p3) > 0) {
           for(k in 1:nrow(p3)) {
 
-
-            current_stop_id = as.character(p3$stop_id[k])
+            current_stop_id = p3$stop_id[k]
             r_arrival_time = p3$arrival_time[k]
+
             min_to_limit = (as.numeric(as.duration(isochrone_params$time_limit_ - r_arrival_time), 'minutes'))
 
-            existing_results <- names(result_env)
-
-            if(current_stop_id %in% existing_results) {
-              if(min_to_limit <= result_env[[current_stop_id]]$arrival_time ) {
+            if(exists(current_stop_id, envir = visited_stops, inherits = FALSE)) {
+              if(min_to_limit <= result_env[[current_stop_id]]$arrival_time) {
                 next()
               }
             }
-
-            result_env = checkres(result_env,
-                                  current_stop_id = current_stop_id,
-                                  r_arrival_time = min_to_limit
+            # Direct assignment
+            result_env[[current_stop_id]] <- list(
+              arrival_time = min_to_limit
             )
+            visited_stops[[current_stop_id]] <- TRUE
 
 
           }
