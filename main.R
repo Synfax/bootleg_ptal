@@ -11,6 +11,7 @@ library(furrr)
 
 
 source('process_isochrone.R')
+source('nearly_giving_uyp.R')
 source('calculate_mesh_block_employment.R')
 
 #synfax gtfs
@@ -123,6 +124,11 @@ if(!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
   joined_buffered_mb_df <- readRDS('rdata_output/joined_buffered_mb_df.Rdata')
 }
 
+# ugz <- read_sf('Order_1IR9YA/ll_gda2020/esrishape/whole_of_dataset/victoria/VMPLAN/PLAN_UGB.shp') %>%
+#   st_union() %>%
+#   st_as_sf() %>%
+#   st_make_valid()
+
 #convert to hash-table
 #this says, for any given MB, which stops can I access?
 mb_to_stops = setNames(joined_buffered_mb_df$stops_inside, joined_buffered_mb_df$MB_CODE21)
@@ -144,25 +150,18 @@ message('Place reg loaded')
 
 full_env <- synfaxgtfs:::.pkgenv
 
-{
-
-  get_place <- function(stop_id, time) {
-    full_env$place_registry[[as.character(stop_id)]][as.character(time)][[1]]
-  }
-
-  memoized_get_place <- memoise(get_place)
-
-
-  results <- map(
-    gtfs_pre_stops,
-    function(stop_id) {
-      # Explicitly pass both parameters to process_stop
-      process_isochrone(starting_stop = stop_id, isochrone_params = isochrone_params, full_env)
-    },
-    .progress = TRUE
-  )
-
-}
+# {
+#
+#   results <- map(
+#     gtfs_pre_stops,
+#     function(stop_id) {
+#       # Explicitly pass both parameters to process_stop
+#       process_isochrone(starting_stop = stop_id, isochrone_params = isochrone_params, full_env)
+#     },
+#     .progress = TRUE
+#   )
+#
+# }
 
 
 
