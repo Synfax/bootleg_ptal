@@ -56,10 +56,18 @@ buffered_stops <- stops_sf %>%
 buffered_stops = st_make_valid(buffered_stops)
 
 #load dwelling_data
-dwelling_data = st_read('~/Documents/r_projects/shapefiles/melbourne_dwelling_data.gpkg')
-dwelling_sa1s = unique(dwelling_data$sa1_code_2021)
-dwelling_sa2s = unique(dwelling_data$sa2_code_2021)
 
+if(!(file.exists('rdata_output/dwelling_sa1s.Rdata') & file.exists('rdata_output/dwelling_sa2s.Rdata'))) {
+  dwelling_data = st_read('~/Documents/r_projects/shapefiles/melbourne_dwelling_data.gpkg')
+  dwelling_sa1s = unique(dwelling_data$sa1_code_2021)
+  dwelling_sa2s = unique(dwelling_data$sa2_code_2021)
+
+  saveRDS(dwelling_sa1s, 'rdata_output/dwelling_sa1s.Rdata')
+  saveRDS(dwelling_sa2s, 'rdata_output/dwelling_sa2s.Rdata')
+} else {
+  dwelling_sa1s <- readRDS('rdata_output/dwelling_sa1s.Rdata')
+  dwelling_sa2s <- readRDS('rdata_output/dwelling_sa2s.Rdata')
+}
 
 if(file.exists('sf_output/dzns_sf.shp')) {
   dzns_sf <- read_sf('sf_output/dzns_sf.shp')
@@ -89,23 +97,31 @@ if(file.exists('sf_output/dzns_sf.shp')) {
 mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
   filter(GCC_NAME21 == "Greater Melbourne", SA1_CODE21 %in% dwelling_sa1s )
 
-#buffer mesh blocks
-buffered <- mb_sf %>%
-  s2::as_s2_geography() %>%
-  s2_buffer_cells(distance = 450, max_cells = 50)
+if(!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
 
-#re-integrate with  stop_id
-buffered_mb_sf <- st_sf(MB_CODE21 =  mb_sf$MB_CODE21, geometry = st_as_sfc(buffered))
+  #buffer mesh blocks
+  buffered <- mb_sf %>%
+    s2::as_s2_geography() %>%
+    s2_buffer_cells(distance = 450, max_cells = 50)
 
-#join to stops
-joined_buffered_mb_sf <- buffered_mb_sf %>%
-  st_join(stops_sf) %>% select(c(MB_CODE21, stop_id, geometry))
+  #re-integrate with  stop_id
+  buffered_mb_sf <- st_sf(MB_CODE21 =  mb_sf$MB_CODE21, geometry = st_as_sfc(buffered))
 
-#convert to df
-joined_buffered_mb_df = joined_buffered_mb_sf %>%
-  st_drop_geometry() %>%
-  group_by(MB_CODE21) %>%
-  summarise(stops_inside = list(stop_id))
+  #join to stops
+  joined_buffered_mb_sf <- buffered_mb_sf %>%
+    st_join(stops_sf) %>% select(c(MB_CODE21, stop_id, geometry))
+
+  #convert to df
+  joined_buffered_mb_df = joined_buffered_mb_sf %>%
+    st_drop_geometry() %>%
+    group_by(MB_CODE21) %>%
+    summarise(stops_inside = list(stop_id))
+
+  saveRDS(joined_buffered_mb_df, 'rdata_output/joined_buffered_mb_df.Rdata')
+
+} else {
+  joined_buffered_mb_df <- readRDS('rdata_output/joined_buffered_mb_df.Rdata')
+}
 
 #convert to hash-table
 #this says, for any given MB, which stops can I access?
@@ -126,9 +142,31 @@ plan('default')
 message('Place reg loaded')
 
 
+full_env <- synfaxgtfs:::.pkgenv
 
-plan(multicore, workers = parallel::detectCores() - 1)
+{
 
+  get_place <- function(stop_id, time) {
+    full_env$place_registry[[as.character(stop_id)]][as.character(time)][[1]]
+  }
+
+  memoized_get_place <- memoise(get_place)
+
+
+  results <- map(
+    gtfs_pre_stops,
+    function(stop_id) {
+      # Explicitly pass both parameters to process_stop
+      process_isochrone(starting_stop = stop_id, isochrone_params = isochrone_params, full_env)
+    },
+    .progress = TRUE
+  )
+
+}
+
+
+
+plan(multisession, workers = parallel::detectCores() - 1)
 
 #set options to 5gb each.
 options(future.globals.maxSize = 5 * 1024^3)
@@ -144,7 +182,7 @@ results <- future_map(
   gtfs_pre_stops,
   function(stop_id) {
     # Explicitly pass both parameters to process_stop
-    process_isochrone(starting_stop = stop_id, isochrone_params = isochrone_params, synfaxgtfs:::.pkgenv)
+    process_isochrone(starting_stop = stop_id, isochrone_params = isochrone_params, full_env)
   },
   .options = furrr_options(seed = TRUE),
   .progress = TRUE
@@ -162,8 +200,7 @@ isochrone_registry <- list.files('stop_isochrones')  %>% map(function(path) {
 
 
 #set up a parallel plan and run calculate_mesh_block_employment for each MB.
-plan(multicore, workers = parallel::detectCores() - 1)
-#source('cal')
+plan(multisession, workers = parallel::detectCores() - 1)
 
 results <- future_map(
   names(mb_to_stops),

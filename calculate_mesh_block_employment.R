@@ -3,6 +3,8 @@ calculate_mesh_block_employment <- function(MB_CODE21) {
   sf_use_s2(F)
   stops_accessible = mb_to_stops[MB_CODE21][[1]]
 
+  stops_reachable_within_time <-
+
   buffered_isochrones = buffered_stops[which(buffered_stops$stop_id %in% stops_accessible), ] %>%
     st_union() %>%
     st_as_sf()

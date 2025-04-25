@@ -1,12 +1,13 @@
+nearly_giving_up <- function(start_stop_id, isochrone_params, full_env, restrict_initial_xfer = T) {
 
+  profvis({
 
-profvis({
+  visited_stops <- new.env(hash = TRUE)
 
-  tic()
   # Export package environment variables to local variables
   stop_id_to_name <- package_env$stop_id_to_name
   arrival_time_dict <- package_env$arrival_time_dict
-  place_registry <- package_env$place_registry
+  #place_registry <- package_env$place_registry
   stops <- package_env$stops
 
   result_env = new.env(hash = T)
@@ -22,7 +23,7 @@ profvis({
   full_duration <- (as.numeric(as.duration(isochrone_params$time_limit_ - hms(isochrone_params$start_time_)), 'minutes'))
   correction_factor = full_duration - arrival_time
 
-  p1 <- place_registry[[current_stop_id]][as.character(arrival_time)][[1]]
+  p1 <- memoized_get_place(current_stop_id, arrival_time)
 
   if(restrict_initial_xfer) {
     p1 <- p1 %>% group_by(trip_id) %>% filter(any(stop_id == current_stop_id)) %>% ungroup()
@@ -53,7 +54,8 @@ profvis({
     min_to_limit = min_to_limit - xfer_penalty_m
 
 
-    p2 = place_registry[[as.character(current_stop_id)]][as.character(min_to_limit)][[1]]
+    #p2 = place_registry[[as.character(current_stop_id)]][as.character(min_to_limit)][[1]]
+    p2 <- memoized_get_place(current_stop_id, min_to_limit)
 
     if(is.null(p2)) next()
     if(nrow(p2) > 0) {
@@ -76,7 +78,8 @@ profvis({
 
         min_to_limit = min_to_limit - xfer_penalty_m
 
-        p3 = place_registry[[as.character(current_stop_id)]][as.character(min_to_limit)][[1]]
+        #p3 = place_registry[[as.character(current_stop_id)]][as.character(min_to_limit)][[1]]
+        p3 <- memoized_get_place(current_stop_id, min_to_limit)
 
         if(is.null(p3)) next()
 
@@ -99,7 +102,7 @@ profvis({
             result_env = checkres(result_env,
                                   current_stop_id = current_stop_id,
                                   r_arrival_time = min_to_limit
-                                  )
+            )
 
 
           }
@@ -116,9 +119,7 @@ profvis({
     arrival_time = sapply(res_unwound, function(x) ((x$arrival_time)))
   )
 
-  toc()
+  })
 
-})
-
-
-return(res)
+  return(res)
+}
