@@ -24,11 +24,14 @@ nearly_giving_up <- function(start_stop_id, isochrone_params, package_env, restr
   correction_factor = full_duration - arrival_time
 
   #p1 <- memoized_get_place(current_stop_id, arrival_time)
-  p1 <- place_registry[[current_stop_id]][as.character(arrival_time)][[1]]
+  p1 <- place_registry[[(current_stop_id)]][as.character(arrival_time)][[1]]
   p1$stop_id = as.character(p1$stop_id)
 
   if(restrict_initial_xfer) {
-    p1 <- p1 %>% group_by(trip_id) %>% filter(any(stop_id == current_stop_id)) %>% ungroup()
+    p1 <- p1 %>%
+      group_by(trip_id) %>%
+      filter(any(stop_id == current_stop_id)) %>%
+      ungroup()
   }
 
   p1$min_to_limit <- as.numeric(as.duration(isochrone_params$time_limit_ - p1$arrival_time), 'minutes')

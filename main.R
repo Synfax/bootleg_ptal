@@ -16,27 +16,24 @@ source('calculate_mesh_block_employment.R')
 
 #synfax gtfs
 
-gtfs_parameters =  list(mode_numbers = unname(unlist(synfaxgtfs::get_settings('mode_numbers'))),
-                        day =  'tuesday',
-                        city = unname(unlist(synfaxgtfs::get_settings('city'))))
+gtfs_parameters =  list(
+  mode_numbers = unname(unlist(
+    synfaxgtfs::get_settings('mode_numbers')
+  )),
+  day =  'saturday',
+  city = unname(unlist(synfaxgtfs::get_settings('city')))
+)
 
-isochrone_params = list(start_time_ = synfaxgtfs::get_settings('start_time_')[[1]][1],
-                        time_limit_ = synfaxgtfs::get_settings('time_limit_')[[1]][1],
-                        xfer_penalty_ = synfaxgtfs::get_settings('xfer_penalty_')[[1]][1] )
+isochrone_params = list(
+  start_time_ = synfaxgtfs::get_settings('start_time_')[[1]][1],
+  time_limit_ = synfaxgtfs::get_settings('time_limit_')[[1]][1],
+  xfer_penalty_ = synfaxgtfs::get_settings('xfer_penalty_')[[1]][1]
+)
 
 synfaxgtfs:::.preload_isochrone_data(gtfs_parameters, isochrone_params)
 
 unique_stops = (unique(synfaxgtfs:::.pkgenv$gtfs_prefilter$stop_id))
-
 arrival_time_dict = synfaxgtfs:::.pkgenv$arrival_time_dict
-
-#.pkgenv = synfaxgtfs:::.pkgenv
-
-
-
-#synfaxgtfs::place_registry_2(unique_stops, isochrone_params, arrival_time_dict)
-
-#synfaxgtfs:::.pkgenv$place_registry -> a
 
 #get stops list
 gtfs_pre_stops <- as.character(synfaxgtfs::get_stops_in_gtfs_pre())
@@ -47,18 +44,27 @@ stops_sf <- synfaxgtfs::get_stops_sf() %>%
 
 #buffered_stops
 
-melbourne_utm <- "EPSG:32755"
-buffered_stops <- stops_sf %>%
-  st_transform(crs = melbourne_utm) %>%
-  st_buffer(dist = 450) %>%
-  st_transform(st_crs(stops_sf)) %>%
-  st_as_sf()
+if (!file.exists('sf_output/buffered_stops.shp')) {
+  melbourne_utm <- "EPSG:32755"
+  buffered_stops <- stops_sf %>%
+    st_transform(crs = melbourne_utm) %>%
+    st_buffer(dist = 450) %>%
+    st_transform(st_crs(stops_sf)) %>%
+    st_as_sf()
 
-buffered_stops = st_make_valid(buffered_stops)
+  buffered_stops = st_make_valid(buffered_stops)
+
+  write_sf(buffered_stops, 'sf_output/buffered_stops.shp')
+} else {
+  buffered_stops = read_sf('sf_output/buffered_stops.shp')
+}
 
 #load dwelling_data
 
-if(!(file.exists('rdata_output/dwelling_sa1s.Rdata') & file.exists('rdata_output/dwelling_sa2s.Rdata'))) {
+if (!(
+  file.exists('rdata_output/dwelling_sa1s.Rdata') &
+  file.exists('rdata_output/dwelling_sa2s.Rdata')
+)) {
   dwelling_data = st_read('~/Documents/r_projects/shapefiles/melbourne_dwelling_data.gpkg')
   dwelling_sa1s = unique(dwelling_data$sa1_code_2021)
   dwelling_sa2s = unique(dwelling_data$sa2_code_2021)
@@ -70,13 +76,15 @@ if(!(file.exists('rdata_output/dwelling_sa1s.Rdata') & file.exists('rdata_output
   dwelling_sa2s <- readRDS('rdata_output/dwelling_sa2s.Rdata')
 }
 
-if(file.exists('sf_output/dzns_sf.shp')) {
+if (file.exists('sf_output/dzns_sf.shp')) {
   dzns_sf <- read_sf('sf_output/dzns_sf.shp')
 } else {
   #employment
 
   #load dzn geographies
-  dzns_sf <- read_sf('~/Documents/r_projects/shapefiles/DZN_2021_AUST_GDA2020_SHP/DZN_2021_AUST_GDA2020.shp') %>%
+  dzns_sf <- read_sf(
+    '~/Documents/r_projects/shapefiles/DZN_2021_AUST_GDA2020_SHP/DZN_2021_AUST_GDA2020.shp'
+  ) %>%
     filter(SA2_CODE21 %in% dwelling_sa2s)
 
 
@@ -95,18 +103,24 @@ if(file.exists('sf_output/dzns_sf.shp')) {
 }
 
 #load mesh block geometries
-mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
-  filter(GCC_NAME21 == "Greater Melbourne", SA1_CODE21 %in% dwelling_sa1s )
+mb_sf <- read_sf(
+  '~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp'
+) %>%
+  filter(GCC_NAME21 == "Greater Melbourne", SA1_CODE21 %in% dwelling_sa1s)
 
-if(!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
-
+if (!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
   #buffer mesh blocks
   buffered <- mb_sf %>%
     s2::as_s2_geography() %>%
     s2_buffer_cells(distance = 450, max_cells = 50)
 
   #re-integrate with  stop_id
-  buffered_mb_sf <- st_sf(MB_CODE21 =  mb_sf$MB_CODE21, geometry = st_as_sfc(buffered))
+  buffered_mb_sf <- st_sf(MB_CODE21 =  mb_sf$MB_CODE21,
+                          geometry = st_as_sfc(buffered))
+
+  #align with UGB
+  #valid_ugb_mbs <- unique(read_csv('sf_output/mb_ugb.csv')$MB_CODE21)
+
 
   #join to stops
   joined_buffered_mb_sf <- buffered_mb_sf %>%
@@ -118,20 +132,29 @@ if(!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
     group_by(MB_CODE21) %>%
     summarise(stops_inside = list(stop_id))
 
-  saveRDS(joined_buffered_mb_df, 'rdata_output/joined_buffered_mb_df.Rdata')
+  saveRDS(joined_buffered_mb_df,
+          'rdata_output/joined_buffered_mb_df.Rdata')
 
 } else {
   joined_buffered_mb_df <- readRDS('rdata_output/joined_buffered_mb_df.Rdata')
 }
 
-# ugz <- read_sf('Order_1IR9YA/ll_gda2020/esrishape/whole_of_dataset/victoria/VMPLAN/PLAN_UGB.shp') %>%
-#   st_union() %>%
-#   st_as_sf() %>%
-#   st_make_valid()
 
 #convert to hash-table
 #this says, for any given MB, which stops can I access?
-mb_to_stops = setNames(joined_buffered_mb_df$stops_inside, joined_buffered_mb_df$MB_CODE21)
+mb_to_stops = setNames(joined_buffered_mb_df$stops_inside,
+                       joined_buffered_mb_df$MB_CODE21)
+
+
+
+
+
+
+
+
+
+
+
 
 message('Begining actual analysis')
 
@@ -147,118 +170,108 @@ plan('default')
 
 message('Place reg loaded')
 
-
+#due to some quirks of the parallel processing, we temporarily take some environment variables from synfaxgtfs
+#and then feed them directly to the worker processes in process_isochrone()
 full_env <- synfaxgtfs:::.pkgenv
 
-# {
-#
-#   results <- map(
-#     gtfs_pre_stops,
-#     function(stop_id) {
-#       # Explicitly pass both parameters to process_stop
-#       process_isochrone(starting_stop = stop_id, isochrone_params = isochrone_params, full_env)
-#     },
-#     .progress = TRUE
-#   )
-#
-# }
 
-
-
-plan(multisession, workers = parallel::detectCores() - 1)
+plan(multisession, workers = 15)
 
 #set options to 5gb each.
 options(future.globals.maxSize = 5 * 1024^3)
 
-#get list of stops that are yet to be saved. Only use in case of an interrupted run on the same GTFS day.
-# stops_completed = list.files('stop_isochrones') %>% str_replace('_isochrone.csv', '')
-# stops_remaining = setdiff(gtfs_pre_stops, stops_completed)
-# stops_no_rbus = full_env$stops_no_rbus$stop_id
-# stops_remaining = intersect(stops_no_rbus, stops_remaining)
-
 # Then use future_map with explicit passing of parameters
-results <- future_map(
-  gtfs_pre_stops,
-  function(stop_id) {
-    # Explicitly pass both parameters to process_stop
-    process_isochrone(starting_stop = stop_id, isochrone_params = isochrone_params, full_env)
-  },
-  .options = furrr_options(seed = TRUE),
-  .progress = TRUE
-)
+results <- future_walk(gtfs_pre_stops, function(stop_id) {
+  # Explicitly pass both parameters to process_stop
+  process_isochrone(starting_stop = stop_id,
+                    isochrone_params = isochrone_params,
+                    full_env)
+}, .options = furrr_options(seed = TRUE), .progress = TRUE)
+
+
 plan('default')
 gc()
 
 message('Isochrones done')
 
+
 #for each isochrone file, place it into a named list.
 #this allows for quick read times in 'calculate_mesh_block_employment'
 isochrone_registry <- list.files('stop_isochrones')  %>% map(function(path) {
-  fread(paste0('stop_isochrones/', path))[,1:2]
-}, .progress = T) %>% setNames( (list.files('stop_isochrones') %>% str_replace('_isochrone.csv', '')) )
+  fread(paste0('stop_isochrones/', path))[, 1:2]
+}, .progress = T) %>% setNames((
+  list.files('stop_isochrones') %>% str_replace('_isochrone.csv', '')
+))
+
+plan(multisession, workers = 15)
+isochrone_employment_registry <- names(isochrone_registry) %>% future_map(function(iso) {
+  calculate_isochrone_employment(iso)
+}, .options = furrr_options(seed = TRUE), .progress = T) %>% setNames(names(isochrone_registry))
+plan('default')
 
 
 #set up a parallel plan and run calculate_mesh_block_employment for each MB.
-plan(multisession, workers = parallel::detectCores() - 1)
-
-results <- future_map(
-  names(mb_to_stops),
-  function(MB_CODE21) {
-    calculate_mesh_block_employment(MB_CODE21)
-  },
-  .options = furrr_options(seed = TRUE),
-  .progress = TRUE
-)
+plan(multisession, workers = 15)
+results <- future_map(names(mb_to_stops), function(MB_CODE21) {
+  calculate_mesh_block_employment(MB_CODE21)
+}, .options = furrr_options(seed = TRUE), .progress = TRUE)
 plan('default')
 gc()
 
+employment_results <- do.call(rbind, results)
 
-message('forming employment stuff')
+
+#message('forming employment stuff')
+
+# mb_employment_df <- list.files('MB_accessibility') %>% map_dfr(function(path) {
+#   fread(paste0('MB_accessibility/', path))
+# }, .progress = T)
+
+mb_sf_em <- mb_sf %>%
+  left_join(employment_results %>% mutate(MB_CODE21 = as.character(MB_CODE21)), by = 'MB_CODE21')
+
+write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp', append = F)
 
 
-  mb_employment_df <- list.files('MB_accessibility') %>% map_dfr(function(path) {
-    fread(paste0('MB_accessibility/', path))
-  }, .progress = T)
-
-  mb_sf_em <- mb_sf %>%
-    left_join(mb_employment_df %>% mutate(MB_CODE21 = as.character(MB_CODE21), by = 'MB_CODE21'))
-
-  write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp', append = F)
-
-  # mb_pal <- colorNumeric(palette = 'Reds', domain = mb_sf_em$total_accessible_employment)
-  # leaflet(mb_sf_em) %>%
-  #   addProviderTiles('CartoDB.Positron') %>%
-  #   addPolygons(data = mb_sf_em,
-  #               fillColor = ~mb_pal(mb_sf_em$total_accessible_employment),
-  #               fillOpacity = 0.7,
-  #               weight = 0.1,
-  #               color = 'black',
-  #               opacity = 0.2)
+# mb_pal <- colorNumeric(palette = 'Reds', domain = mb_sf_em$total_accessible_employment)
+# leaflet(mb_sf_em) %>%
+#   addProviderTiles('CartoDB.Positron') %>%
+#   addPolygons(data = mb_sf_em,
+#               fillColor = ~mb_pal(mb_sf_em$total_accessible_employment),
+#               fillOpacity = 0.7,
+#               weight = 0.1,
+#               color = 'black',
+#               opacity = 0.2)
 
 
 
 
 draw_isochrone <- function(xyz) {
-
-  employment_pal = colorBin('Reds', bins = 10, domain = xyz$weighted_employment)
+  employment_pal = colorBin('Reds',
+                            bins = 10,
+                            domain = xyz$weighted_employment)
 
   map <- leaflet(xyz) %>%
     addProviderTiles('CartoDB.Positron') %>%
-    addPolygons(fillColor = ~employment_pal(xyz$weighted_employment),
-                weight = 0.4,
-                color = 'black',
-                stroke = T,
-                fillOpacity = 1) %>%
-    addLegend(position = 'bottomleft',
-              pal = employment_pal,
-              values = xyz$weighted_employment,
-              title = "Jobs accessible within 45 mins") %>%
+    addPolygons(
+      fillColor = ~ employment_pal(xyz$weighted_employment),
+      weight = 0.4,
+      color = 'black',
+      stroke = T,
+      fillOpacity = 1
+    ) %>%
+    addLegend(
+      position = 'bottomleft',
+      pal = employment_pal,
+      values = xyz$weighted_employment,
+      title = "Jobs accessible within 45 mins"
+    ) %>%
     addMeasure(primaryLengthUnit = 'metres')
 
   return(map)
 
 }
 
-mp <- function(x) {leaflet(x) %>% addProviderTiles('CartoDB.Positron') %>% addPolygons()}
-
-
+mp <- function(x) {
+  leaflet(x) %>% addProviderTiles('CartoDB.Positron') %>% addPolygons()
+}
