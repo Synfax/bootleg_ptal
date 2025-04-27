@@ -13,6 +13,10 @@ library(furrr)
 source('process_isochrone.R')
 source('nearly_giving_uyp.R')
 source('calculate_mesh_block_employment.R')
+source('calculate_isochrone_employment.R')
+source('reset_storage.R')
+
+reset_storage()
 
 #synfax gtfs
 
@@ -20,7 +24,7 @@ gtfs_parameters =  list(
   mode_numbers = unname(unlist(
     synfaxgtfs::get_settings('mode_numbers')
   )),
-  day =  'saturday',
+  day =  'monday',
   city = unname(unlist(synfaxgtfs::get_settings('city')))
 )
 
@@ -118,10 +122,6 @@ if (!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
   buffered_mb_sf <- st_sf(MB_CODE21 =  mb_sf$MB_CODE21,
                           geometry = st_as_sfc(buffered))
 
-  #align with UGB
-  #valid_ugb_mbs <- unique(read_csv('sf_output/mb_ugb.csv')$MB_CODE21)
-
-
   #join to stops
   joined_buffered_mb_sf <- buffered_mb_sf %>%
     st_join(stops_sf) %>% select(c(MB_CODE21, stop_id, geometry))
@@ -144,17 +144,6 @@ if (!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
 #this says, for any given MB, which stops can I access?
 mb_to_stops = setNames(joined_buffered_mb_df$stops_inside,
                        joined_buffered_mb_df$MB_CODE21)
-
-
-
-
-
-
-
-
-
-
-
 
 message('Begining actual analysis')
 
@@ -183,9 +172,13 @@ options(future.globals.maxSize = 5 * 1024^3)
 # Then use future_map with explicit passing of parameters
 results <- future_walk(gtfs_pre_stops, function(stop_id) {
   # Explicitly pass both parameters to process_stop
-  process_isochrone(starting_stop = stop_id,
-                    isochrone_params = isochrone_params,
-                    full_env)
+
+  isochrone_results <- nearly_giving_up(as.character(stop_id), isochrone_params, full_env, restrict_initial_xfer = T)
+  fwrite(isochrone_results, paste0('stop_isochrones/', starting_stop, '_isochrone.csv'))
+
+  # process_isochrone(starting_stop = stop_id,
+  #                   isochrone_params = isochrone_params,
+  #                   full_env)
 }, .options = furrr_options(seed = TRUE), .progress = TRUE)
 
 
@@ -203,12 +196,15 @@ isochrone_registry <- list.files('stop_isochrones')  %>% map(function(path) {
   list.files('stop_isochrones') %>% str_replace('_isochrone.csv', '')
 ))
 
+message('registry loaded')
+
 plan(multisession, workers = 15)
 isochrone_employment_registry <- names(isochrone_registry) %>% future_map(function(iso) {
   calculate_isochrone_employment(iso)
 }, .options = furrr_options(seed = TRUE), .progress = T) %>% setNames(names(isochrone_registry))
 plan('default')
 
+message('isochrone employment finished')
 
 #set up a parallel plan and run calculate_mesh_block_employment for each MB.
 plan(multisession, workers = 15)
@@ -218,8 +214,16 @@ results <- future_map(names(mb_to_stops), function(MB_CODE21) {
 plan('default')
 gc()
 
-employment_results <- do.call(rbind, results)
+message('isochrone employment mapped onto mbs')
 
+employment_results <- do.call(bind_rows, results)
+
+mb_sf_em <- mb_sf %>%
+  left_join(employment_results %>% mutate(MB_CODE21 = as.character(MB_CODE21)), by = 'MB_CODE21')
+
+write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp', append = F)
+
+message('mbs saved')
 
 #message('forming employment stuff')
 
@@ -227,10 +231,7 @@ employment_results <- do.call(rbind, results)
 #   fread(paste0('MB_accessibility/', path))
 # }, .progress = T)
 
-mb_sf_em <- mb_sf %>%
-  left_join(employment_results %>% mutate(MB_CODE21 = as.character(MB_CODE21)), by = 'MB_CODE21')
 
-write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp', append = F)
 
 
 # mb_pal <- colorNumeric(palette = 'Reds', domain = mb_sf_em$total_accessible_employment)
@@ -242,8 +243,6 @@ write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp', append = F)
 #               weight = 0.1,
 #               color = 'black',
 #               opacity = 0.2)
-
-
 
 
 draw_isochrone <- function(xyz) {
