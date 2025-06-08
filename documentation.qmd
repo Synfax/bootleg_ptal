@@ -1,0 +1,170 @@
+---
+title: "documentation"
+format: html
+---
+
+```{r, warning=FALSE, message=FALSE}
+
+library(tidyverse)
+library(data.table)
+library(leaflet)
+library(sf)
+library(s2)
+
+sf_use_s2(F)
+
+buffered_stops <- read_sf('sf_output/buffered_stops.shp')
+dzns_sf <- read_sf('sf_output/dzns_sf.shp')
+mb_sf_em <- read_sf('sf_output/mb_sf_em.shp')
+stops_sf_d <- read_sf('sf_output/stops_documentation.shp')
+isochrone_emp_reg <- readRDS('rdata_output/isochrome_emp_registry.Rdata')
+
+```
+
+# Intro 
+
+This documentation explains the process behind this transport service level index calculation.
+
+# Step 1: set settings & preload isochrone data
+
+The first step is to initialise my tangentially related gtfs package. This is done through preload_isochrone_data(). You can see more documentation for preload_isochrone_data() in the documentation for synfaxgtfs. 
+
+The short version is that the function performs calculations that are likely to be repeated many times when generating an isochrone, and stores them for quick lookup times later to save system resources.
+
+# Step 2: Load place registry
+
+The place registry is a complex two tiered lookup table that handles the actual isochrone logic. The table aims to answer 'what stops can I get to if I arrive at a particular spot at a particular time'. With this lookup table pre-loaded, actually iterating over potential routes becomes much simpler as there is next-to-no filtering or manipulating in the actual runs.
+
+# Step 3: Generate isochrones
+
+An isochrone that meets the initial parameters is calculated for each stop in the network. 
+
+The end result of this is a list of other stop_ids that are reachable within the constraints. 
+
+These are saved to a folder for later use. A second column which contains the travel time to each stop is also saved, although not used in this project.
+
+```{r, message=FALSE}
+
+test_isochrone <- fread('stop_isochrones/14315_isochrone.csv')
+
+test_isochrone %>%
+  slice_head(n = 10) %>%
+  print()
+
+```
+
+# Step 4: Generate isochrone employment
+
+For each isochrone file saved to disk in the process step above, a buffer is first calculated.
+
+```{r , warning=FALSE, message=FALSE }
+
+isochrone_stops <- unique(test_isochrone$stop_id)
+
+buffered_isochrones = buffered_stops[which(buffered_stops$stop_id %in% isochrone_stops), ] %>%
+    st_union() %>%
+    st_as_sf()
+
+leaflet(buffered_isochrones) %>% 
+  addProviderTiles('CartoDB.Positron') %>% 
+  addPolygons()
+
+```
+
+The buffer is then overlaid on top of the employment destination zones shapefile.
+
+We then get a data frame where each row is a destination zone, and there `ttl_mpl` represents total employment in that zone. Another column, `pc_intersection`, records the overlap between the stop isochrone and that zone. 
+
+I assume a uniform distribution of jobs throughout a destination zone for simplicity. Therefore, if an isochrone covers 60% of a destination zone, I assume 60% of the jobs are reachable. 
+
+The process ends by summing (`ttl_mpl` * `pc_intersection`) across all destination zones. This is `weighted_employment` in the table below.
+
+```{r, warning=FALSE, message=FALSE}
+
+intersectioned <- st_intersection(buffered_isochrones, dzns_sf)
+
+intersectioned$intersection_area <- st_area(intersectioned$x)
+
+intersectioned$pc_intersection <- as.numeric(
+    ((intersectioned$intersection_area/10^6) / intersectioned$AREASQK)
+)
+
+intersectioned$weighted_employment <- intersectioned$pc_intersection * intersectioned$ttl_mpl
+
+intersectioned %>%
+  st_drop_geometry() %>%
+  mutate(across(where(is.numeric), ~round(.x, 2))) %>%
+  slice_head(n = 10) %>%
+  print()
+
+```
+
+# Step 5: Calculate mesh block employment
+
+The final step involves buffering a given mesh block and seeing which stops are within the buffer. Let's take a look at a sample mesh block.
+
+```{r, warning=FALSE, message=FALSE}
+
+sample_mb_code <- '20015400000'
+
+sample_mb <- mb_sf_em %>%
+  filter(MB_CODE21 == sample_mb_code)
+
+leaflet(sample_mb) %>% 
+  addProviderTiles('CartoDB.Positron') %>% 
+  addPolygons()
+
+```
+
+
+If we then buffer the mesh block:
+
+```{r, warning=FALSE, message=FALSE}
+
+buffered_sample <- sample_mb %>%
+    s2::as_s2_geography() %>%
+    s2_buffer_cells(distance = 450, max_cells = 50)
+
+leaflet(st_as_sf(buffered_sample)) %>% 
+  addProviderTiles('CartoDB.Positron') %>% 
+  addPolygons()
+
+```
+
+
+This buffer is then checked against stop locations to reveal which stops are inside the buffer:
+
+```{r, warning=FALSE, message=FALSE}
+
+joined_buffered_mb_sf <- st_as_sf(buffered_sample) %>%
+    st_join(stops_sf_d)
+
+stops_in_buffer <- stops_sf_d %>% 
+  filter(stop_id %in% joined_buffered_mb_sf$stop_id)
+
+leaflet() %>% 
+  addProviderTiles('CartoDB.Positron') %>% 
+  addPolygons(data = st_as_sf(buffered_sample)) %>% 
+  addCircleMarkers(data = stops_in_buffer)
+
+```
+
+We are then left with a list of stops accessible from a given mesh block. From step 4, we already have calculated the reachable employment for any given stop.
+
+This gives us a dataframe of however many stops are in the buffer, 12 in this case. For each of the 12 stops, we have an employment figure from step 4.
+
+```{r, warning=FALSE, message=FALSE}
+
+do.call(rbind, isochrone_emp_reg[stops_in_buffer$stop_id]) %>% print()
+
+```
+
+The script as it stands currently records three statistics with this information. 
+
+ - the mean employment accessible, as the sum of the employment reachable divided by the number of stops within the buffer
+ - the median employment accessible to minimise the impact of outliers.
+ - the maximum employment, as it is presumed that people would walk to the best stop.
+ 
+# Step 6: Write it all to file
+
+Then, for each mesh block, the process is repeated, merged to the initial mesh block sf and then written to file.

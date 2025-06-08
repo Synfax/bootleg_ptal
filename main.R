@@ -7,28 +7,52 @@ library(tictoc)
 library(s2)
 library(leaflet)
 library(future)
+library(benchmarkme)
 library(furrr)
 
+#source files
 source('calculate_mesh_block_employment.R')
 source('calculate_isochrone_employment.R')
 source('reset_storage.R')
 
+#settings - core count and whether to enable parallel processing
+  #enable parallel processing (required for sub ~4 hour processing time)
+  doParallel = T
+
+  #set the number of cores to work on in parallel
+  #core count < RAM/5
+  #e.g 32gb RAM, 6 cores would do, but you cant alloc
+  num_cores <- min(as.numeric(get_ram()/(10^9)) / 6, parallel::detectCores() - 1)
+
 
 #files required:
-# - mesh blocks
-# - destination zones
-# - dwelling_data
-# - employment csv
+  # - mesh blocks
+  # - destination zones
+  # - dwelling_data
+  # - employment csv
 
+#set file paths
+  mb_path <- '~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp'
+  dz_path <- '~/Documents/r_projects/shapefiles/DZN_2021_AUST_GDA2020_SHP/DZN_2021_AUST_GDA2020.shp'
+  dd_path <- '~/Documents/r_projects/shapefiles/melbourne_dwelling_data.gpkg'
+  employment_csv_path <- 'sf_input/employment_dzn.csv'
+
+#this script stores isochrone outputs in stop_isochrones, so we need to reset the files as to not mix two gtfs schedules together
 reset_storage()
 
-#synfax gtfs
+#set start and end times and transfer penalty
+synfaxgtfs::update_settings(list(start_time_ = "8:30:00",
+                                 time_limit_ = hms("9:15:00"),
+                                 xfer_penalty_ = hms("00:05:00"),
+                                 day = 'monday'
+                                 ))
 
+#synfax gtfs
 gtfs_parameters =  list(
   mode_numbers = unname(unlist(
     synfaxgtfs::get_settings('mode_numbers')
   )),
-  day =  'sunday',
+  day =  unname(unlist(synfaxgtfs::get_settings('day'))),
   city = unname(unlist(synfaxgtfs::get_settings('city')))
 )
 
@@ -38,10 +62,11 @@ isochrone_params = list(
   xfer_penalty_ = synfaxgtfs::get_settings('xfer_penalty_')[[1]][1]
 )
 
+#preload hash tables for use later
 synfaxgtfs:::.preload_isochrone_data(gtfs_parameters, isochrone_params)
 
-unique_stops = (unique(synfaxgtfs:::.pkgenv$gtfs_prefilter$stop_id))
-arrival_time_dict = synfaxgtfs:::.pkgenv$arrival_time_dict
+#unique_stops = (unique(synfaxgtfs:::.pkgenv$gtfs_prefilter$stop_id))
+#arrival_time_dict = synfaxgtfs:::.pkgenv$arrival_time_dict
 
 #get stops list
 gtfs_pre_stops <- as.character(synfaxgtfs::get_stops_in_gtfs_pre())
@@ -53,6 +78,7 @@ stops_sf <- synfaxgtfs::get_stops_sf() %>%
 #buffered_stops
 
 if (!file.exists('sf_output/buffered_stops.shp')) {
+
   melbourne_utm <- "EPSG:32755"
   buffered_stops <- stops_sf %>%
     st_transform(crs = melbourne_utm) %>%
@@ -73,7 +99,7 @@ if (!(
   file.exists('rdata_output/dwelling_sa1s.Rdata') &
   file.exists('rdata_output/dwelling_sa2s.Rdata')
 )) {
-  dwelling_data = st_read('~/Documents/r_projects/shapefiles/melbourne_dwelling_data.gpkg')
+  dwelling_data = st_read(dd_path)
   dwelling_sa1s = unique(dwelling_data$sa1_code_2021)
   dwelling_sa2s = unique(dwelling_data$sa2_code_2021)
 
@@ -91,13 +117,12 @@ if (file.exists('sf_output/dzns_sf.shp')) {
 
   #load dzn geographies
   dzns_sf <- read_sf(
-    '~/Documents/r_projects/shapefiles/DZN_2021_AUST_GDA2020_SHP/DZN_2021_AUST_GDA2020.shp'
+    dz_path
   ) %>%
     filter(SA2_CODE21 %in% dwelling_sa2s)
 
-
   #load csv
-  employment_dzn = read.csv('employment_dzn.csv', skip = 10) %>%
+  employment_dzn = read.csv(employment_csv_path, skip = 10) %>%
     rename(DZN_CODE21 = "X1.digit.level.OCCP.Occupation", total_employment = 'Total') %>%
     select(DZN_CODE21, total_employment) %>%
     mutate(DZN_CODE21 = as.character(DZN_CODE21))
@@ -112,7 +137,7 @@ if (file.exists('sf_output/dzns_sf.shp')) {
 
 #load mesh block geometries
 mb_sf <- read_sf(
-  '~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp'
+  mb_path
 ) %>%
   filter(GCC_NAME21 == "Greater Melbourne", SA1_CODE21 %in% dwelling_sa1s)
 
@@ -144,35 +169,44 @@ if (!file.exists('rdata_output/joined_buffered_mb_df.Rdata')) {
 }
 
 
-#convert to hash-table
+#convert to lookup-table
 #this says, for any given MB, which stops can I access?
 mb_to_stops = setNames(joined_buffered_mb_df$stops_inside,
                        joined_buffered_mb_df$MB_CODE21)
 
 message('Loading place registry')
 
+
 #this code builds a large hash table 'for each stop and potential arrival time, where could I get to?
-xz <- load_place_registry_parallel(unique_stops, isochrone_params, arrival_time_dict)
+#it was playing funny without assigning the result to something, which is why it is assigned to xz and then removed.
+xz <- load_place_registry(gtfs_pre_stops, isochrone_params, doParallel, num_cores)
 rm(xz)
 gc()
 
 plan('default')
 
+
 message('Place reg loaded')
 
 #due to some quirks of the parallel processing, we temporarily take some environment variables from synfaxgtfs
-#and then feed them directly to the worker processes in process_isochrone()
+#and then feed them directly to the worker processes in run_iteration_parallel()
 #this env is what is generated by preload_isochrone_data() and load_place_registry_parallel()
 full_env <- synfaxgtfs:::.pkgenv
 
-plan(multisession, workers = 15)
+if(doParallel) {
+  plan(multisession, workers = num_cores)
+  options(future.globals.maxSize = 5 * 1024^3)
+} else {
+  plan('sequential')
+}
+
 #set options to 5gb each.
-options(future.globals.maxSize = 5 * 1024^3)
 
 # Then use future_map with explicit passing of parameters
 future_walk(gtfs_pre_stops, function(stop_id) {
+
   stop_id = as.character(stop_id)
-  isochrone_results <- synfaxgtfs::run_iteration_parallel((stop_id), isochrone_params, full_env, restrict_initial_xfer = T)
+  isochrone_results <- synfaxgtfs::run_iteration((stop_id), isochrone_params, full_env, restrict_initial_xfer = T)
   fwrite(isochrone_results, paste0('stop_isochrones/', stop_id, '_isochrone.csv'))
 
 }, .options = furrr_options(seed = TRUE), .progress = TRUE)
@@ -184,6 +218,7 @@ message('Isochrones done')
 
 #for each isochrone file, place it into a named list.
 #this allows for quick read times in 'calculate_mesh_block_employment'
+
 isochrone_registry <- list.files('stop_isochrones')  %>% map(function(path) {
   fread(paste0('stop_isochrones/', path))[, 1:2]
 }, .progress = T) %>% setNames((
@@ -219,32 +254,3 @@ write_sf(mb_sf_em, 'sf_output/mb_sf_em.shp', append = F)
 
 message('mbs saved')
 
-draw_isochrone <- function(xyz) {
-  employment_pal = colorBin('Reds',
-                            bins = 10,
-                            domain = xyz$weighted_employment)
-
-  map <- leaflet(xyz) %>%
-    addProviderTiles('CartoDB.Positron') %>%
-    addPolygons(
-      fillColor = ~ employment_pal(xyz$weighted_employment),
-      weight = 0.4,
-      color = 'black',
-      stroke = T,
-      fillOpacity = 1
-    ) %>%
-    addLegend(
-      position = 'bottomleft',
-      pal = employment_pal,
-      values = xyz$weighted_employment,
-      title = "Jobs accessible within 45 mins"
-    ) %>%
-    addMeasure(primaryLengthUnit = 'metres')
-
-  return(map)
-
-}
-
-mp <- function(x) {
-  leaflet(x) %>% addProviderTiles('CartoDB.Positron') %>% addPolygons()
-}

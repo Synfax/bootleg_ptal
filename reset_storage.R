@@ -1,5 +1,14 @@
 
 reset_storage <- function() {
+
+  if(!dir.exists('stop_isochrones/')) {
+    dir.create('stop_isochrones/')
+  }
+
+  if(!dir.exists('sf_output/')) {
+    dir.create('sf_output/')
+  }
+
   delete_files_in_folders <- function(folder_paths) {
     # Loop through each folder
     for (folder in folder_paths) {
@@ -22,7 +31,7 @@ reset_storage <- function() {
   }
 
   # Example usage:
-  folders <- c("stop_isochrones/", "MB_accessibility/")
+  folders <- c("stop_isochrones/")
   delete_files_in_folders(folders)
 
 }
