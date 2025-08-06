@@ -9,10 +9,14 @@ library(leaflet)
 library(future)
 library(benchmarkme)
 library(furrr)
+library(profvis)
+library(parallel)
+library(doParallel)
 
 #source files
 source('calculate_mesh_block_employment.R')
 source('calculate_isochrone_employment.R')
+source('gtfs_files/initialise_gtfs.R')
 source('reset_storage.R')
 
 #settings - core count and whether to enable parallel processing
@@ -40,38 +44,28 @@ source('reset_storage.R')
 #this script stores isochrone outputs in stop_isochrones, so we need to reset the files as to not mix two gtfs schedules together
 reset_storage()
 
-#set start and end times and transfer penalty
-synfaxgtfs::update_settings(list(start_time_ = "8:30:00",
-                                 time_limit_ = hms("9:15:00"),
-                                 xfer_penalty_ = hms("00:05:00"),
-                                 day = 'monday'
-                                 ))
-
-#synfax gtfs
+#set gtfs parameters
 gtfs_parameters =  list(
-  mode_numbers = unname(unlist(
-    synfaxgtfs::get_settings('mode_numbers')
-  )),
-  day =  unname(unlist(synfaxgtfs::get_settings('day'))),
-  city = unname(unlist(synfaxgtfs::get_settings('city')))
+  mode_numbers = 2:4,
+  day = 'wednesday',
+  city = 'melbourne'
 )
 
 isochrone_params = list(
-  start_time_ = synfaxgtfs::get_settings('start_time_')[[1]][1],
-  time_limit_ = synfaxgtfs::get_settings('time_limit_')[[1]][1],
-  xfer_penalty_ = synfaxgtfs::get_settings('xfer_penalty_')[[1]][1]
+  start_time_ = "8:59:00",
+  time_limit_ = time_limit_ = hms("9:45:00"),
+  xfer_penalty_ = hms("00:05:00")
 )
 
-#preload hash tables for use later
-synfaxgtfs:::.preload_isochrone_data(gtfs_parameters, isochrone_params)
+#preload hash tables and gtfs tables for use later
+initialise_gtfs(gtfs_parameters, isochrone_params)
 
-#unique_stops = (unique(synfaxgtfs:::.pkgenv$gtfs_prefilter$stop_id))
-#arrival_time_dict = synfaxgtfs:::.pkgenv$arrival_time_dict
 
 #get stops list
-gtfs_pre_stops <- as.character(synfaxgtfs::get_stops_in_gtfs_pre())
+gtfs_pre_stops <- unique_stops
+
 #get stops sf
-stops_sf <- synfaxgtfs::get_stops_sf() %>%
+stops_sf <- stops %>%
   mutate(stop_id = as.character(stop_id)) %>%
   filter(stop_id %in% gtfs_pre_stops)
 
