@@ -1,6 +1,6 @@
 # Fork-based parallel batch isochrone processing using shared memory
 
-parallel_fork_processing <- function(result, walking_distances) {
+parallel_fork_processing <- function(place_registry, walking_distances) {
 
   # Configuration
   num_cores <- 8  # Adjust based on your system
@@ -9,7 +9,7 @@ parallel_fork_processing <- function(result, walking_distances) {
 
   message("Setting up fork cluster with ", num_cores, " workers")
   message("Objects in memory before forking:")
-  message("  result size: ", format(object.size(result), "MB"))
+  message("  place_registry size: ", format(object.size(place_registry), "MB"))
   message("  walking_distances size: ", format(object.size(walking_distances), "MB"))
 
   # Setup fork cluster - objects are shared via copy-on-write
@@ -17,24 +17,24 @@ parallel_fork_processing <- function(result, walking_distances) {
   registerDoParallel(cl)
 
   # Create batches
-  all_stops <- sample(unique_stops)
+  all_stops <- sample(as.character(unique_stops))
   stop_batches <- split(all_stops, ceiling(seq_along(all_stops) / batch_size))
   message("Processing ", length(all_stops), " stops in ", length(stop_batches), " batches")
 
   # Function to process a single batch
   process_batch <- function(batch_data) {
 
-    setkey(result, 'source_stop_id')
+    setkey(place_registry, 'source_stop_id')
 
     start_stop_ids <- batch_data$stops
     batch_idx <- batch_data$idx
 
-    # Objects (result, walking_distances, stop_id_to_name) are already available via shared memory
+    # Objects (place_registry, walking_distances, stop_id_to_name) are already available via shared memory
     message("Worker processing batch ", batch_idx, " with ", length(start_stop_ids), " stops")
     batch_start_time <- Sys.time()
 
     # === P1: First iteration (BATCHED) ===
-    p1_raw <- result[.(start_stop_ids), nomatch=0L]
+    p1_raw <- place_registry[.(start_stop_ids), nomatch=0L]
 
     # Add batch identifier
     start_lookup <- data.table(
@@ -70,7 +70,7 @@ parallel_fork_processing <- function(result, walking_distances) {
       ))
     }
 
-    p2_raw <- result[.(p2_stop_ids), nomatch=0L]
+    p2_raw <- place_registry[.(p2_stop_ids), nomatch=0L]
 
     # Join with travel times - using allow.cartesian for known large joins
     master_p2 <- p1_travel_times[p2_raw, on = .(source_stop_id), nomatch=0L, allow.cartesian=TRUE][
@@ -112,7 +112,7 @@ parallel_fork_processing <- function(result, walking_distances) {
     walking_cons[, time_to_point := total_time_travelled + walking_time]
 
 
-    # Write results to files within worker
+    # Write place_registrys to files within worker
     files_written <- 0
     if(nrow(walking_cons) > 0) {
       walking_cons[, {
@@ -152,7 +152,7 @@ parallel_fork_processing <- function(result, walking_distances) {
   overall_start_time <- Sys.time()
 
   # Use parLapply instead of future_map - no data transfer needed
-  batch_results <- parLapplyLB(cl, batch_data_list, process_batch)
+  batch_place_registrys <- parLapplyLB(cl, batch_data_list, process_batch)
 
   overall_end_time <- Sys.time()
   total_duration <- as.numeric(difftime(overall_end_time, overall_start_time, units = "secs"))
@@ -161,10 +161,10 @@ parallel_fork_processing <- function(result, walking_distances) {
   stopCluster(cl)
   registerDoSEQ()  # Reset to sequential
 
-  # Summarize results
-  total_stops <- sum(sapply(batch_results, function(x) x$stops_processed))
-  total_files <- sum(sapply(batch_results, function(x) x$files_written))
-  avg_duration_per_batch <- mean(sapply(batch_results, function(x) x$duration))
+  # Summarize place_registrys
+  total_stops <- sum(sapply(batch_place_registrys, function(x) x$stops_processed))
+  total_files <- sum(sapply(batch_place_registrys, function(x) x$files_written))
+  avg_duration_per_batch <- mean(sapply(batch_place_registrys, function(x) x$duration))
   avg_duration_per_stop <- total_duration / total_stops
 
   message("\n=== FORK PARALLEL BATCH PROCESSING COMPLETE ===")
@@ -182,13 +182,13 @@ parallel_fork_processing <- function(result, walking_distances) {
 
   # Print detailed batch statistics
   batch_stats <- data.table(
-    batch = sapply(batch_results, function(x) x$batch_idx),
-    duration = sapply(batch_results, function(x) x$duration),
-    stops = sapply(batch_results, function(x) x$stops_processed),
-    p1_conn = sapply(batch_results, function(x) x$p1_connections),
-    p2_conn = sapply(batch_results, function(x) x$p2_connections),
-    walking_conn = sapply(batch_results, function(x) x$walking_connections),
-    files = sapply(batch_results, function(x) x$files_written)
+    batch = sapply(batch_place_registrys, function(x) x$batch_idx),
+    duration = sapply(batch_place_registrys, function(x) x$duration),
+    stops = sapply(batch_place_registrys, function(x) x$stops_processed),
+    p1_conn = sapply(batch_place_registrys, function(x) x$p1_connections),
+    p2_conn = sapply(batch_place_registrys, function(x) x$p2_connections),
+    walking_conn = sapply(batch_place_registrys, function(x) x$walking_connections),
+    files = sapply(batch_place_registrys, function(x) x$files_written)
   )
   batch_stats[, time_per_stop := duration / stops]
 

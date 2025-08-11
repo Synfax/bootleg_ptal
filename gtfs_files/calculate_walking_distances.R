@@ -1,8 +1,8 @@
 calculate_walking_distances <- function() {
 
-  if(exists()) {
+  if(file.exists('rdata_output/walking_distances.Rdata')) {
 
-    #return(readRDS('temp/test_dt.Rdata'))
+    return(readRDS('rdata_output/walking_distances.Rdata'))
 
   } else {
 
@@ -17,7 +17,7 @@ calculate_walking_distances <- function() {
       print(matrix_index)
 
       stop_id <- list_of_stops[matrix_index]
-      row_numbers_within_max_dist <- unlist(aa[matrix_index])
+      row_numbers_within_max_dist <- unlist(stops_within_distance[matrix_index])
       stops_within_max_dist <- stops[row_numbers_within_max_dist,]
       distances <- units::drop_units(st_distance(stops[matrix_index,], stops_within_max_dist))
       walking_times <- distances[1,] %/% 84

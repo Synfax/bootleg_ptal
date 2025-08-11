@@ -1,4 +1,4 @@
-generate_place_registry <- function() {
+generate_place_registry <- function(doParallel, num_cores) {
 
 
   departures_dt <- setDT(gtfs_prefilter %>%
@@ -11,13 +11,10 @@ generate_place_registry <- function() {
   departures_stop_dt <- setkey(copy(departures_dt), stop_id)
   departures_trip_dt <- setkey(copy(departures_dt), trip_id)
 
-  doParallel = T
 
   #set the number of cores to work on in parallel
   #core count < RAM/5
   #e.g 32gb RAM, 6 cores would do, but you cant alloc
-  num_cores <- 16
-
 
   # Set up parallel processing
 
@@ -29,14 +26,11 @@ generate_place_registry <- function() {
     plan('sequential')
   }
 
-  message('plan established')
-  message(nbrOfWorkers())
+  message('plan established with ', nbrOfWorkers(), ' of workers')
 
-  unique_stops = as.character(unique_stops)
+  result <- future_map_dfr(as.character(unique_stops), function(current_stop_id) {
 
-  result <- future_map_dfr(unique_stops, function(current_stop_id) {
-
-    stops_to_transfer_to <- test_dt[.(current_stop_id)]
+    stops_to_transfer_to <- walking_distances[.(current_stop_id)]
     stops_to_transfer_to <- stops_to_transfer_to[, .SD[which.min(walking_time)], by = destination_stop_id]
     stops_to_transfer_to[, time_left_after_walking := 46 -
                            walking_time]
@@ -77,4 +71,6 @@ generate_place_registry <- function() {
   }, .progress = TRUE)
 
   plan('sequential')
+
+  return(result)
 }

@@ -15,7 +15,7 @@ initialise_gtfs <- function(gtfs_parameters, isochrone_params) {
   # stops_df <- stops %>%
   #   st_drop_geometry()
 
-  unique_stops = unique(gtfs_prefilter$stop_id)
+  unique_stops <<- as.character(unique(gtfs_prefilter$stop_id))
 
   #probably need to set this as a dt at some point
   stop_id_to_name <<- setNames(stops$stop_name, stops$stop_id)
