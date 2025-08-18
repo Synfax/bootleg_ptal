@@ -1,6 +1,12 @@
 # Fork-based parallel batch isochrone processing using shared memory
 
-parallel_fork_processing <- function(place_registry, walking_distances) {
+parallel_fork_processing <- function(walking_distances, num_cores) {
+  # Fork-based parallel batch isochrone processing using shared memory
+  library(parallel)
+  library(doParallel)
+  library(data.table)
+
+  setkey(place_registry, 'source_stop_id')
 
   # Configuration
   num_cores <- 8  # Adjust based on your system
@@ -17,7 +23,7 @@ parallel_fork_processing <- function(place_registry, walking_distances) {
   registerDoParallel(cl)
 
   # Create batches
-  all_stops <- sample(as.character(unique_stops))
+  all_stops <- sample(unique_stops)
   stop_batches <- split(all_stops, ceiling(seq_along(all_stops) / batch_size))
   message("Processing ", length(all_stops), " stops in ", length(stop_batches), " batches")
 
@@ -196,5 +202,6 @@ parallel_fork_processing <- function(place_registry, walking_distances) {
   print(batch_stats[order(batch)])
 
   message("\nFork cluster processing completed successfully!")
+
 
 }

@@ -6,7 +6,7 @@ calculate_walking_distances <- function() {
 
   } else {
 
-    list_of_stops <- gtfs_pre_stops
+    list_of_stops <- stops$stop_id
     full_duration <- (as.numeric(as.duration(isochrone_params$time_limit - hms(isochrone_params$start_time)), 'minutes'))
     max_reachable_distance <- 46 * 84
 
@@ -30,7 +30,8 @@ calculate_walking_distances <- function() {
       )
     }))
 
-    setkey(walking_distances, origin_stop_id, destination_stop_id)
+    setkeyv(walking_distances, c("origin_stop_id", "destination_stop_id"))
+
 
     saveRDS(walking_distances, 'rdata_output/walking_distances.Rdata')
 
