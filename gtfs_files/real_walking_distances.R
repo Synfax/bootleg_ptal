@@ -31,7 +31,7 @@ edges <- tr_road_brunswick %>%
   mutate(distance = units::drop_units(st_length(geometry)) )
 
 edges_reversed <- edges %>%
-  rename(FROM_UFI = TO_UFI, TO_UFI = FROM_UFI)
+  rename(FROM_UFI = TO_UFI, TO_UFI = FROM_UFI)h
 
 edges_dt <- bind_rows(edges, edges_reversed) %>%
   mutate(FROM_UFI = as.character(FROM_UFI),
@@ -114,9 +114,11 @@ dijkstra <- function(starting_node, max_distance = 46 * 84) {
 
 dijkstra("2290274") -> d
 
-d %>% filter(visited) %>% left_join(tr_infra_brunswick %>% mutate(UFI = as.character(UFI)), by = "UFI") -> djik_test
+stop_ufi_dict <- connect_stops_with_nodes(vertices, stops)
+setkey(stop_ufi_dict, nearest_UFI)
 
-write_sf(djik_test, 'sf_output/djikstra_test.gpkg')
+#join result to stops eventually.
+
 
 ##
 #
