@@ -32,70 +32,74 @@ edges_reversed <- edges %>%
 edges_dt <- bind_rows(edges, edges_reversed) %>%
   mutate(FROM_UFI = as.character(FROM_UFI),
          TO_UFI = as.character(TO_UFI)) %>%
+  group_by(FROM_UFI, TO_UFI) %>%
+  summarise(distance = min(distance), .groups = 'drop') %>%
   as.data.table()
 
 setkey(edges_dt, FROM_UFI)
 
+#map network to triple check structure
 plot(st_geometry(edges), col = 'blue', lwd = 2)
 plot(st_geometry(vertices), col = 'red', add = TRUE, pch = 16, cex = 1.5)
 
-#
 
 
 djikstra <- function(starting_node, max_distance = 46 * 84) {
-  #set up tracking df
 
-  djikstra_tracking <- vertices %>%
-    st_drop_geometry() %>%
-    mutate(distance = Inf, visited = F) %>%
-    as.data.table()
+  profvis({
 
-  setkey(djikstra_tracking, UFI)
+    # Set up tracking df
+    djikstra_tracking <- vertices %>%
+      st_drop_geometry() %>%
+      mutate(distance = Inf, visited = F) %>%
+      as.data.table()
 
-  djikstra_tracking[starting_node]$distance <- 0
-  unreached_nodes_df <- djikstra_tracking[visited == FALSE][order(distance)]
+    setkey(djikstra_tracking, UFI)
+    djikstra_tracking[starting_node]$distance <- 0
 
-  while (nrow(unreached_nodes_df) > 0) {
-    current_node = unreached_nodes_df[1, ]$UFI
+    # Use a simple vector to track unvisited nodes
+    unvisited_nodes <- djikstra_tracking$UFI
 
-    current_tracked_distance <- unreached_nodes_df[1, ]$distance
+    while (length(unvisited_nodes) > 0) {
+      # Find closest unvisited node
+      distances <- djikstra_tracking[unvisited_nodes]$distance
+      min_idx <- which.min(distances)
+      current_node <- unvisited_nodes[min_idx]
+      current_tracked_distance <- distances[min_idx]
 
-    #EARLY TERMINATION: If closest unvisited node is beyond threshold, stop!
-    if(current_tracked_distance > max_distance) {
-      break
-    }
-
-    djikstra_tracking[current_node, visited := TRUE]
-
-    reachable_nodes <- edges_dt[current_node]
-
-    setkey(reachable_nodes, TO_UFI)
-
-    for (node in unique(reachable_nodes$TO_UFI)) {
-
-      shortest_distance = djikstra_tracking[node]$distance
-
-      if(is.na(shortest_distance)) {
-        next()
+      # Early termination if we reach max distance
+      if(current_tracked_distance > max_distance) {
+        break
       }
 
-      current_distance = min(reachable_nodes[node]$distance) + current_tracked_distance
+      # Remove from unvisited
+      unvisited_nodes <- unvisited_nodes[-min_idx]
 
-      if (current_distance < shortest_distance) {
-        djikstra_tracking[node, distance := current_distance]
+      #update master tracking branch
+      djikstra_tracking[current_node, visited := TRUE]
+
+      #find what we can get to
+      reachable_nodes <- edges_dt[current_node]
+
+      #vectorised for speed
+      if(nrow(reachable_nodes) > 0) {
+        neighbor_distances <- djikstra_tracking[reachable_nodes$TO_UFI]$distance
+        new_distances <- reachable_nodes$distance + current_tracked_distance
+        update_mask <- new_distances < neighbor_distances & !is.na(neighbor_distances)
+
+        if(any(update_mask)) {
+          djikstra_tracking[reachable_nodes$TO_UFI[update_mask], distance := new_distances[update_mask]]
+        }
       }
 
     }
 
-    unreached_nodes_df <- djikstra_tracking[visited == FALSE][order(distance)]
-
-    #remove node from unreached nodes
-    # unreached_nodes_df = setorder(copy(djikstra_tracking), distance)
-    # unreached_nodes_list = c(unreached_nodes_list, current_node)
-    # unreached_nodes_df <- unreached_nodes_df[!c(unreached_nodes_list, current_node), on = "osm_id"]
+    djikstra_tracking[, walking_time := distance %/% 84]
+    djikstra_tracking = djikstra_tracking[visited == T]
 
 
-  }
+  })
+
 
   return(djikstra_tracking)
 
