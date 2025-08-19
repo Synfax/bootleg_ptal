@@ -67,13 +67,15 @@ edges_dt <- bind_rows(edges, edges_reversed) %>%
 edges_dt <- edges_dt[, .(distance = min(distance)), by = .(FROM_UFI, TO_UFI)]
 edges_dt_keyed <- copy(edges_dt) %>% setkey(FROM_UFI)
 
-#now for the logic.
+all_vertices <- tr_road_infra %>%
+  mutate(UFI = as.character(UFI))
 
-#we are going to iterate through every SA2 in Greater Melbourne
-#for each SA2 we are going to buffer by the maximum walking distance.
+##do PT linkage
 
+transit_ufi_dict <- connect_stops_with_nodes(all_vertices, stops %>% st_transform(7855))
 
-function(sa2) {
+# Function to process a single SA2
+process_sa2 <- function(sa2) {
 
   current_sa2_sf = sa2_sf %>%
     filter(SA2_NAME21 == sa2)
@@ -82,7 +84,23 @@ function(sa2) {
 
   #get nodes in the current SF that will be our starting points
   #now we need to find all the nodes we could walk to so we can keep the network small.
-  starting_nodes = road_infra_dt[sa2]$UFI %>% as.character()
+  starting_nodes = road_infra_dt[sa2]
+
+  if(nrow(starting_nodes) == 0) {
+    message("No nodes found for SA2: ", sa2, " - skipping")
+    return(data.table())
+  }
+
+  starting_nodes[, UFI := as.character(UFI)]
+
+  starting_nodes = starting_nodes[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
+
+  if(nrow(starting_nodes) == 0) {
+    message("No transit-linked nodes found for SA2: ", sa2, " - skipping")
+    return(data.table())
+  }
+
+  starting_nodes = starting_nodes$UFI
 
   #buffer the sa2
   buffered_sa2 <- st_buffer(current_sa2_sf, dist = buffer_size)
@@ -111,11 +129,11 @@ function(sa2) {
   idx_to_node <- setNames(vertices$UFI, seq_along(vertices$UFI))
 
 
-  starting_nodes %>% map(.f = function(starting_node) {
+  starting_nodes %>% map_dfr(.f = function(starting_node) {
 
     #profvis({
 
-      print(starting_node)
+      #print(starting_node)
 
       distances_vec <- rep(Inf, length(vertices$UFI))
       distances_vec[node_to_idx[starting_node]] <- 0
@@ -159,16 +177,85 @@ function(sa2) {
       # Create result
       visited_nodes <- vertices$UFI[visited_vec]
       result <- data.table(
+        start_UFI = starting_node,
         UFI = visited_nodes,
         distance = distances_vec[visited_vec],
         walking_time = distances_vec[visited_vec] %/% 84
       )
     #})
-  })
+  }) -> sa2_level_result
 
+  fwrite(sa2_level_result, paste0('walking_isochrones_sa2/',sa2,'.csv'))
+
+  sa2_level_result_transit = sa2_level_result[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
+
+  return(sa2_level_result_transit)
 }
 
+# Clean up environment before forking
+cleanup_environment <- function() {
+  # Remove large objects that aren't needed for processing
+  objects_to_remove <- ls(envir = .GlobalEnv)
+  keep_objects <- c("sa2_sf", "road_infra_dt", "edges_dt_keyed", "minutes_willing_to_walk",
+                   "transit_ufi_dict", "process_sa2", "all_vertices", "tr_road_infra")
 
+  to_remove <- setdiff(objects_to_remove, keep_objects)
+  if(length(to_remove) > 0) {
+    rm(list = to_remove, envir = .GlobalEnv)
+    message("Removed ", length(to_remove), " objects from environment")
+  }
+
+  # Force garbage collection
+  gc()
+
+  # Show memory usage
+  message("Memory usage after cleanup:")
+  message("  sa2_sf: ", format(object.size(sa2_sf), "MB"))
+  message("  road_infra_dt: ", format(object.size(road_infra_dt), "MB"))
+  message("  edges_dt_keyed: ", format(object.size(edges_dt_keyed), "MB"))
+  message("  transit_ufi_dict: ", format(object.size(transit_ufi_dict), "MB"))
+}
+
+# Main parallel processing function using FORK
+run_parallel_walking_isochrones <- function() {
+
+
+
+  # Clean environment first
+  cleanup_environment()
+  num_cores = 8
+  # Get list of all SA2s to process
+  all_sa2s <- unique(sa2_sf$SA2_NAME21)
+  message("Processing ", length(all_sa2s), " SA2s in parallel with ", num_cores, " cores using FORK")
+
+  # Create output directory
+  dir.create("walking_isochrones_sa2", showWarnings = FALSE)
+
+  # Set up FORK cluster for shared memory
+  cl <- makeCluster(num_cores, type = "FORK")
+
+  # No need to export - FORK shares memory automatically
+
+  # Run parallel processing with load balancing
+  message("Starting parallel processing...")
+  start_time <- Sys.time()
+
+  results <- parLapplyLB(cl, all_sa2s, process_sa2)
+
+  end_time <- Sys.time()
+
+  # Clean up cluster
+  stopCluster(cl)
+
+  message("Parallel processing completed in ",
+          round(difftime(end_time, start_time, units = "mins"), 2), " minutes")
+
+  # Combine results if needed
+  combined_results <- rbindlist(results)
+  return(combined_results)
+}
+
+saveRDS(combined_results, 'rdata_output/walking_distances_new.Rdata')
 
 vis_res <- function(result) {
   copal <- colorNumeric(palette = 'Reds', domain =  result$walking_time, reverse = T)
