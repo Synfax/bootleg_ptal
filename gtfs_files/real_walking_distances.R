@@ -106,63 +106,64 @@ function(sa2) {
   edges_list = edges_dt_keyed[vertices$UFI]
   edges_list = split(edges_list, edges_list$FROM_UFI)
 
+  # Set up tracking with integer indices for fast lookups
+  node_to_idx <- setNames(seq_along(vertices$UFI), vertices$UFI)
+  idx_to_node <- setNames(vertices$UFI, seq_along(vertices$UFI))
+
+
   starting_nodes %>% map(.f = function(starting_node) {
 
-    profvis({
+    #profvis({
 
       print(starting_node)
 
-      # Set up tracking with named vectors for O(1) lookups
-      distances <- setNames(rep(Inf, nrow(vertices)), vertices$UFI)
-      distances[starting_node] <- 0
-      visited <- setNames(rep(FALSE, nrow(vertices)), vertices$UFI)
+      distances_vec <- rep(Inf, length(vertices$UFI))
+      distances_vec[node_to_idx[starting_node]] <- 0
+      visited_vec <- rep(FALSE, length(vertices$UFI))
 
-      # Use a simple vector to track unvisited nodes
-      unvisited_nodes <- vertices$UFI
+      unvisited_idx <- seq_along(vertices$UFI)
 
-      while (length(unvisited_nodes) > 0) {
-        # Find closest unvisited node
-        unvisited_distances <- distances[unvisited_nodes]
-        min_idx <- which.min(unvisited_distances)
-        current_node <- unvisited_nodes[min_idx]
-        current_tracked_distance <- unvisited_distances[min_idx]
+      while (length(unvisited_idx) > 0) {
+        # Find closest unvisited node using integer indexing
+        unvisited_distances <- distances_vec[unvisited_idx]
+
+        min_pos <- which.min(unvisited_distances)
+        current_idx <- unvisited_idx[min_pos]
+        current_node <- idx_to_node[current_idx]
+        current_tracked_distance <- unvisited_distances[min_pos]
 
         # Early termination if we reach max distance
         if(current_tracked_distance > buffer_size) break
 
         # Remove from unvisited
-        unvisited_nodes <- unvisited_nodes[-min_idx]
+        unvisited_idx <- unvisited_idx[-min_pos]
 
-        #update master tracking branch
-        visited[current_node] <- TRUE
+        # Mark as visited
+        visited_vec[current_idx] <- TRUE
 
-        #find what we can get to
+        # Find reachable nodes
         reachable_nodes <- edges_list[[current_node]]
-        #reachable_nodes <- edges_dt[current_node]
 
-        #vectorised for speed
         if(nrow(reachable_nodes) > 0) {
-          neighbor_distances <- distances[reachable_nodes$TO_UFI]
+          neighbor_idx <- node_to_idx[reachable_nodes$TO_UFI]
+          neighbor_distances <- distances_vec[neighbor_idx]
           new_distances <- reachable_nodes$distance + current_tracked_distance
           update_mask <- new_distances < neighbor_distances & !is.na(neighbor_distances)
 
           if(any(update_mask)) {
-            distances[reachable_nodes$TO_UFI[update_mask]] <- new_distances[update_mask]
+            distances_vec[neighbor_idx[update_mask]] <- new_distances[update_mask]
           }
         }
-
       }
 
-      # Create result data.table
+      # Create result
+      visited_nodes <- vertices$UFI[visited_vec]
       result <- data.table(
-        UFI = names(distances)[visited],
-        distance = distances[visited],
-        walking_time = distances[visited] %/% 84,
-        visited = TRUE
+        UFI = visited_nodes,
+        distance = distances_vec[visited_vec],
+        walking_time = distances_vec[visited_vec] %/% 84
       )
-
-    })
-
+    #})
   })
 
 }
