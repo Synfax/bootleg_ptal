@@ -26,21 +26,32 @@ generate_place_registry <- function(doParallel, num_cores) {
     plan('sequential')
   }
 
+  setkey(walking_distances, start_UFI)
+
   message('plan established with ', nbrOfWorkers(), ' of workers')
 
-  result <- future_map_dfr(as.character(unique_stops), function(current_stop_id) {
+  setkey(transit_ufi_dict, stop_id)
 
-    stops_to_transfer_to <- walking_distances[.(current_stop_id)]
+  place_registry <- future_map_dfr(as.character(unique_stops), function(current_stop_id) {
+
+    walking_dist_key <- transit_ufi_dict[current_stop_id]$nearest_UFI
+
+    #get which stops I can walk to
+    stops_to_transfer_to <- walking_distances[.(walking_dist_key)]
+    stops_to_transfer_to[, destination_stop_id := stop_id]
+    stops_to_transfer_to[, c('stop_id', 'UFI','stop_name', 'start_UFI') := NULL]
+
+    #ths shouldn't happen but temp
     stops_to_transfer_to <- stops_to_transfer_to[, .SD[which.min(walking_time)], by = destination_stop_id]
     stops_to_transfer_to[, time_left_after_walking := 46 -
                            walking_time]
 
 
-
     #trip id of departures from stops you can walk to
     departures_from_transfer_stops <- departures_stop_dt[stops_to_transfer_to$destination_stop_id]
-    departures_from_transfer_stops <- departures_from_transfer_stops[stops_to_transfer_to, on = .(stop_id = destination_stop_id)]
 
+    #join back with walking distances
+    departures_from_transfer_stops <- departures_from_transfer_stops[stops_to_transfer_to, on = .(stop_id = destination_stop_id)]
 
     #clean up and calculate time left after walking there
     departures_from_transfer_stops[, time_left_after_walking := 46 - walking_time]
@@ -52,13 +63,14 @@ generate_place_registry <- function(doParallel, num_cores) {
     departures_from_transfer_stops <- departures_from_transfer_stops[time_left_after_walking >= minutes_until_time_limit]
 
 
-    #hat it's doing: For each trip, it's finding the first/earliest stop where you can board (the stop with the most time remaining until the time limit).
-
+    #what it's doing: For each trip, it's finding the first/earliest stop where you can board (the stop with the most time remaining until the time limit).
     departures_from_transfer_stops <- departures_from_transfer_stops[, .SD[which.max(minutes_until_time_limit)], by = trip_id]
 
     #dont need to recalculate min stop sequences, its literally already present in stop_to_departures
+    #now you find all the places you can get to
     transfer_connections <- departures_trip_dt[departures_from_transfer_stops, on = .(trip_id)]
     transfer_connections[, route_id := NULL]
+    #some renaming
     transfer_connections[,alighting_stop_name := stop_id_to_name[stop_id]]
     transfer_connections[,boarding_stop_name := stop_id_to_name[i.stop_id]]
 

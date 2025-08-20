@@ -40,10 +40,10 @@ source('gtfs_files/parallel_fork_processing.R')
   # - employment csv
 
 #set file paths
-  mb_path <- '~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp'
-  dz_path <- '~/Documents/r_projects/shapefiles/DZN_2021_AUST_GDA2020_SHP/DZN_2021_AUST_GDA2020.shp'
-  dd_path <- '~/Documents/r_projects/shapefiles/melbourne_dwelling_data.gpkg'
-  employment_csv_path <- 'sf_input/employment_dzn.csv'
+  # mb_path <- '~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp'
+  # dz_path <- '~/Documents/r_projects/shapefiles/DZN_2021_AUST_GDA2020_SHP/DZN_2021_AUST_GDA2020.shp'
+  # dd_path <- '~/Documents/r_projects/shapefiles/melbourne_dwelling_data.gpkg'
+  # employment_csv_path <- 'sf_input/employment_dzn.csv'
 
 #this script stores isochrone outputs in stop_isochrones, so we need to reset the files as to not mix two gtfs schedules together
 reset_storage()

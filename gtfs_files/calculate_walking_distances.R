@@ -1,41 +1,41 @@
 calculate_walking_distances <- function() {
 
-  if(file.exists('rdata_output/walking_distances.Rdata')) {
+  if(file.exists('rdata_output/walking_distances_new.Rdata')) {
 
-    return(readRDS('rdata_output/walking_distances.Rdata'))
+    return(readRDS('rdata_output/walking_distances_new.Rdata'))
 
   } else {
-
-    list_of_stops <- stops$stop_id
-    full_duration <- (as.numeric(as.duration(isochrone_params$time_limit - hms(isochrone_params$start_time)), 'minutes'))
-    max_reachable_distance <- 46 * 84
-
-    sf_use_s2(F)
-    stops_within_distance <- st_is_within_distance(stops, dist = units::set_units(max_reachable_distance, 'm'), sparse = T, remove_self = F)
-
-    walking_distances <- rbindlist(lapply(1:nrow(stops), function(matrix_index) {
-      print(matrix_index)
-
-      stop_id <- list_of_stops[matrix_index]
-      row_numbers_within_max_dist <- unlist(stops_within_distance[matrix_index])
-      stops_within_max_dist <- stops[row_numbers_within_max_dist,]
-      distances <- units::drop_units(st_distance(stops[matrix_index,], stops_within_max_dist))
-      walking_times <- distances[1,] %/% 84
-
-      # Return data.table directly instead of named vector
-      data.table(
-        origin_stop_id = stop_id,
-        destination_stop_id = stops_within_max_dist$stop_id,
-        walking_time = as.numeric(walking_times)
-      )
-    }))
-
-    setkeyv(walking_distances, c("origin_stop_id", "destination_stop_id"))
-
-
-    saveRDS(walking_distances, 'rdata_output/walking_distances.Rdata')
-
-    return(walking_distances)
+#
+#     list_of_stops <- stops$stop_id
+#     full_duration <- (as.numeric(as.duration(isochrone_params$time_limit - hms(isochrone_params$start_time)), 'minutes'))
+#     max_reachable_distance <- 46 * 84
+#
+#     sf_use_s2(F)
+#     stops_within_distance <- st_is_within_distance(stops, dist = units::set_units(max_reachable_distance, 'm'), sparse = T, remove_self = F)
+#
+#     walking_distances <- rbindlist(lapply(1:nrow(stops), function(matrix_index) {
+#       print(matrix_index)
+#
+#       stop_id <- list_of_stops[matrix_index]
+#       row_numbers_within_max_dist <- unlist(stops_within_distance[matrix_index])
+#       stops_within_max_dist <- stops[row_numbers_within_max_dist,]
+#       distances <- units::drop_units(st_distance(stops[matrix_index,], stops_within_max_dist))
+#       walking_times <- distances[1,] %/% 84
+#
+#       # Return data.table directly instead of named vector
+#       data.table(
+#         origin_stop_id = stop_id,
+#         destination_stop_id = stops_within_max_dist$stop_id,
+#         walking_time = as.numeric(walking_times)
+#       )
+#     }))
+#
+#     setkeyv(walking_distances, c("origin_stop_id", "destination_stop_id"))
+#
+#
+#     saveRDS(walking_distances, 'rdata_output/walking_distances.Rdata')
+#
+#     return(walking_distances)
 
   }
 
