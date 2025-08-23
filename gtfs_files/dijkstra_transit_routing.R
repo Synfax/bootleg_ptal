@@ -118,3 +118,12 @@ res$stop_id = str_split_i(res$node, '_', 1)
 res = res %>% left_join(stops, by = 'stop_id') %>% as.data.frame() %>% st_set_geometry('geometry')
 
 leaflet(res) %>% addProviderTiles('CartoDB.Positron') %>% addCircleMarkers()
+
+##
+
+
+res$stop_id = str_split_i(names(vertex_to_index[res$vertex_index]), '_', 1)
+
+res = res %>% left_join(stops, by = 'stop_id') %>% as.data.frame() %>% st_set_geometry('geometry')
+
+leaflet(res) %>% addProviderTiles('CartoDB.Positron') %>% addCircleMarkers()

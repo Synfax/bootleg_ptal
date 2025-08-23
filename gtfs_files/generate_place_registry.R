@@ -84,5 +84,5 @@ generate_place_registry <- function(doParallel, num_cores) {
 
   plan('sequential')
 
-  return(result)
+  return(place_registry)
 }

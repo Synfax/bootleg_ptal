@@ -22,6 +22,7 @@ source('reset_storage.R')
 source('gtfs_files/calculate_walking_distances.R')
 source('gtfs_files/generate_place_registry.R')
 source('gtfs_files/parallel_fork_processing.R')
+source('gtfs_files/get_transit_ufi_dict.R')
 
 #settings - core count and whether to enable parallel processing
   #enable parallel processing (required for sub ~4 hour processing time)
@@ -76,6 +77,7 @@ message('Loading place registry')
 
 
 #TODO: explain what this does
+transit_ufi_dict <- get_transit_ufi_dict()
 walking_distances <- calculate_walking_distances()
 place_registry <<- generate_place_registry(doParallel, num_cores)
 
