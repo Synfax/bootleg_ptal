@@ -1,17 +1,11 @@
-# Time-expanded Dijkstra routing with numeric indexing and temporal pruning
-# Author: Claude Code
-# Purpose: Fast transit routing using place_registry with memory-efficient temporal dominance
-
+# Time-expanded Dijkstra routing with stop+time vertices and stop-based adjacency
+# Clean implementation with numeric indexing
 library(data.table)
-
-setkey(place_registry, source_stop_id)
-
-ss <- place_registry['14315']
 
 dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 46) {
 
   # =============================================================================
-  # STEP 1: Create numeric vertex mapping system
+  # STEP 1: Create vertices as (stop_id, time) pairs with numeric indexing
   # =============================================================================
 
   # Extract all unique (stop_id, time) pairs from place_registry
@@ -22,154 +16,122 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
   all_vertex_pairs <- unique(rbind(source_pairs, dest_pairs))
   setkey(all_vertex_pairs, stop_id, time)
 
-  # Create numeric vertex indices (much faster than character lookups)
+  # Create numeric vertex indices
   all_vertex_pairs[, vertex_index := .I]
 
-  # Create fast lookup tables
+  # Create fast lookup: "stop_time" -> numeric_index
   vertex_to_index <- all_vertex_pairs$vertex_index
   names(vertex_to_index) <- paste0(all_vertex_pairs$stop_id, "_", all_vertex_pairs$time)
 
-  # Store vertex metadata for quick access during algorithm
-  # Convert remaining time to elapsed time for consistency
+  # Store vertex metadata for algorithm
   vertex_metadata <- data.table(
     vertex_index = all_vertex_pairs$vertex_index,
     stop_id = all_vertex_pairs$stop_id,
-    time_elapsed = max_time - all_vertex_pairs$time  # Convert remaining -> elapsed
+    time_remaining = all_vertex_pairs$time
   )
   setkey(vertex_metadata, vertex_index)
 
-  message("Created ", nrow(all_vertex_pairs), " vertices with numeric indexing")
+  message("Created ", nrow(all_vertex_pairs), " time-expanded vertices")
 
   # =============================================================================
-  # STEP 2: Build adjacency list with numeric indices
+  # STEP 2: Build adjacency list grouped by stop (not time-vertices)
   # =============================================================================
 
-  # Create edges using numeric indices
-  edges_dt <- place_registry[, .(trip_id, stop_id, minutes_until_time_limit, walking_time, mins_left_at_dep_time, time_margin, source_stop_id)]
+  # Prepare edges with all necessary info
+  edges_dt <- place_registry[, .(
+    trip_id,
+    source_stop_id,
+    stop_id,
+    mins_left_at_dep_time,
+    minutes_until_time_limit,
+    travel_time = mins_left_at_dep_time - minutes_until_time_limit,
+    time_margin
+  )]
 
-  # Map to numeric indices
-  edges_dt[, from_index := vertex_to_index[paste0(source_stop_id, "_", from_time)]]
-  edges_dt[, to_index := vertex_to_index[paste0(stop_id, "_", to_time)]]
+  # Group by source stop to get ALL departures from each stop
+  adjacency_list <- split(edges_dt, by = "source_stop_id")
 
-  # Group by source stop to get ALL possible departures from each stop
-  adjacency_list <- split(
-    edges_dt[, ],
-    edges_dt$source_stop
-  )
-
-  message("Created adjacency list with ", nrow(edges_dt), " edges")
+  message("Created adjacency list for ", length(adjacency_list), " stops")
 
   # =============================================================================
-  # STEP 3: Temporal pruning Dijkstra with pure numeric operations
+  # STEP 3: Dijkstra with time-expanded vertices and stop-based adjacency
   # =============================================================================
 
   dijkstra_with_pruning <- function(start_vertex_index) {
 
+    start_vertex_index = 58812
+
     num_vertices <- max(vertex_metadata$vertex_index)
 
-    # Distance tracking (numeric vectors for O(1) access)
-    distances <- rep(Inf, num_vertices)
-    distances[start_vertex_index] <- 0
+    # Only track visited vertices - no distance tracking needed
     visited <- rep(FALSE, num_vertices)
+    
+    # Queue of vertices to process (start with starting vertex)
+    queue <- c(start_vertex_index)
 
-    # Temporal dominance: track best time seen per stop_id
-    # Use numeric stop indices for speed
-    unique_stops <- unique(vertex_metadata$stop_id)
-    stop_to_numeric <- setNames(seq_along(unique_stops), unique_stops)
-    best_time_per_stop <- rep(0, length(unique_stops))
+    while(length(queue) > 0) {
 
-    # Priority queue as simple vector (will optimize later)
-    unvisited <- seq_len(num_vertices)[distances < Inf]
+      # Process next vertex from queue
+      current_index <- queue[1]
+      queue <- queue[-1]
+      
+      # Skip if already visited
+      if(visited[current_index]) next
 
-    while(length(unvisited) > 0) {
-
-      # Find minimum distance vertex
-      current_distances <- distances[unvisited]
-      min_pos <- which.min(current_distances)
-      current_index <- unvisited[min_pos]
-      current_distance <- current_distances[min_pos]
-
-      print(current_index)
-
-      # Early termination if exceed max_time
-      if(current_distance >= max_time) break
-
-      # Get vertex metadata using numeric lookup
-      current_meta <- vertex_metadata[current_index]
-      current_stop_numeric <- stop_to_numeric[current_meta$stop_id]
-      current_time_remaining <- max_time - current_distance
-
-      #Sanity check: current_distance should match vertex time_elapsed
-      if(abs(current_distance - current_meta$time_elapsed) > 0.1) {
-        warning("Time inconsistency detected")
-      }
-
-      # Temporal pruning: skip if dominated by earlier visit
-      if(best_time_per_stop[current_stop_numeric] >= current_time_remaining) {
-        unvisited <- unvisited[-min_pos]
-        next
-      }
-
-      # Update dominance tracking
-      best_time_per_stop[current_stop_numeric] <- current_time_remaining
-
-      # Mark as visited and remove from queue
+      # Mark as visited
       visited[current_index] <- TRUE
-      unvisited <- unvisited[-min_pos]
 
-      # Process neighbors using adjacency list
-      # Get current stop from vertex metadata
+      # Get current vertex info (stop and time remaining encoded in vertex)
+      current_meta <- vertex_metadata[current_index]
       current_stop <- current_meta$stop_id
+      current_time_remaining <- current_meta$time_remaining
+      current_elapsed_time <- max_time - current_time_remaining
 
       # Get ALL possible departures from this stop
       neighbors <- adjacency_list[[current_stop]]
 
       if(!is.null(neighbors) && nrow(neighbors) > 0) {
 
-        # Filter departures we can actually catch based on our arrival time
-        # We can catch departures that still have >= our remaining time
-        catchable_neighbors <- neighbors[from_time <= current_time_remaining]
-
-        # Additional filter: time_margin should accommodate our travel time to get here
-        valid_neighbors <- catchable_neighbors[time_margin >= current_distance]
+        # Filter to valid connections based on time constraints
+        valid_neighbors <- neighbors[
+          mins_left_at_dep_time <= current_time_remaining &  # Can catch this departure
+          time_margin >= current_elapsed_time                # Sufficient slack time
+        ]
 
         if(nrow(valid_neighbors) > 0) {
-          new_distances <- current_distance + valid_neighbors$travel_time
 
-          # Vectorized distance updates
-          update_mask <- new_distances < distances[valid_neighbors$to_index]
-          if(any(update_mask)) {
-            distances[valid_neighbors$to_index[update_mask]] <- new_distances[update_mask]
+          # Calculate destination vertex indices
+          dest_vertex_names <- paste0(valid_neighbors$stop_id, "_", valid_neighbors$minutes_until_time_limit)
+          dest_indices <- vertex_to_index[dest_vertex_names]
+          dest_indices <- dest_indices[!is.na(dest_indices)]  # Remove invalid destinations
 
-            # Add newly discovered vertices to unvisited queue
-            newly_reachable <- valid_neighbors$to_index[update_mask & !visited[valid_neighbors$to_index]]
-            unvisited <- unique(c(unvisited, newly_reachable))
+          if(length(dest_indices) > 0) {
+            # Add unvisited destinations to queue
+            new_vertices <- dest_indices[!visited[dest_indices]]
+            queue <- unique(c(queue, new_vertices))
           }
         }
       }
     }
 
-    # Return reachable vertices within time limit
-    reachable_indices <- which(visited & distances <= max_time)
+    # Return all visited vertices
+    reachable_indices <- which(visited)
 
-    res <- data.table(
-        vertex_index = reachable_indices,
-        travel_time = distances[reachable_indices]
-      )
+    result <- data.table(
+      vertex_index = reachable_indices
+    )
 
-    # return(data.table(
-    #   vertex_index = reachable_indices,
-    #   travel_time = distances[reachable_indices]
-    # ))
+    # Add stop_id and time info for interpretation
+    result[vertex_metadata, `:=`(stop_id = i.stop_id, time_remaining = i.time_remaining), on = "vertex_index"]
+
+    return(result)
   }
 
-
-
   # =============================================================================
-  # STEP 4: Process multiple starting stops
+  # STEP 4: Process starting stops
   # =============================================================================
 
-  # Find starting vertex indices
+  # Find starting vertex indices (stops at max_time)
   starting_vertex_names <- paste0(starting_stops, "_", max_time)
   starting_indices <- vertex_to_index[starting_vertex_names]
   starting_indices <- starting_indices[!is.na(starting_indices)]
@@ -187,8 +149,5 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
     return(result)
   }))
 
-  # Join back vertex metadata for readable output
-  final_results <- all_results[vertex_metadata, on = "vertex_index"]
-
-  return(final_results)
+  return(all_results)
 }
