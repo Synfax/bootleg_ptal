@@ -52,7 +52,7 @@ reset_storage()
 #set gtfs parameters
 gtfs_parameters =  list(
   mode_numbers = 2:4,
-  day = 'monday',
+  day = 'saturday',
   city = 'melbourne'
 )
 
@@ -80,6 +80,8 @@ message('Loading place registry')
 transit_ufi_dict <- get_transit_ufi_dict()
 walking_distances <- calculate_walking_distances()
 place_registry <<- generate_place_registry(doParallel, num_cores)
+walking_access_dict <<- link_walk_stops()
+ufi_employment_fractions <<- generate_ufi_employment_fractions()
 
 plan('default')
 

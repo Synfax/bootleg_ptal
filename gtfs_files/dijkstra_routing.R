@@ -98,8 +98,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
   dijkstra_with_pruning <- function(start_vertex_index) {
 
-    profvis({
-      start_vertex_index = 58812
+    #profvis({
 
       num_vertices <- max(vertex_metadata$vertex_index)
 
@@ -183,10 +182,12 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
         walking_time <= time_remaining  # Filter to walkable destinations
       ]
 
-    })
+      UFIs <- as.character(unique(final_destinations$UFI))
+      employment <- sum(ufi_employment_fractions[UFIs]$total_allocated_employment)
 
+    #})
 
-    return(result)
+    return(data.table(empl = employment))
   }
 
   # =============================================================================
@@ -194,8 +195,15 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
   # =============================================================================
 
   # Find starting vertex indices (stops at max_time)
-  starting_vertex_names <- paste0(starting_stops, "_", max_time)
-  starting_indices <- vertex_to_index[starting_vertex_names]
+
+  vertex_metadata %>%
+    as.data.frame() %>%
+    group_by(stop_id) %>%
+    slice_max(time_remaining) %>%
+    mutate(starting_vertex_names = paste0(stop_id,'_',time_remaining)) -> starting_vertices
+
+
+  starting_indices <- vertex_to_index[starting_vertices$starting_vertex_names]
   starting_indices <- starting_indices[!is.na(starting_indices)]
 
   if(length(starting_indices) == 0) {
@@ -204,12 +212,25 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
   message("Starting Dijkstra from ", length(starting_indices), " vertices")
 
+  starting_indices = starting_indices[sample(length(starting_indices), length(starting_indices))]
+
   # Run Dijkstra for each starting point
   all_results <- rbindlist(lapply(starting_indices, function(start_index) {
     result <- dijkstra_with_pruning(start_index)
     result[, start_vertex_index := start_index]
     return(result)
   }))
+
+  all_results[, stop_id := vertex_stop_ids[start_vertex_index]]
+
+  {
+    all_results %>%
+      as.data.frame() %>%
+      left_join(stops, by = 'stop_id') %>%
+      st_set_geometry('geometry')-> res_sf
+
+    st_write(res_sf, 'sf_output/res_sf.gpkg', append = F)
+  }
 
   return(all_results)
 }
