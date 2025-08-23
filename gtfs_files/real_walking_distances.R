@@ -192,37 +192,11 @@ process_sa2 <- function(sa2) {
   return(sa2_level_result_transit)
 }
 
-# Clean up environment before forking
-cleanup_environment <- function() {
-  # Remove large objects that aren't needed for processing
-  objects_to_remove <- ls(envir = .GlobalEnv)
-  keep_objects <- c("sa2_sf", "road_infra_dt", "edges_dt_keyed", "minutes_willing_to_walk",
-                   "transit_ufi_dict", "process_sa2", "all_vertices", "tr_road_infra")
 
-  to_remove <- setdiff(objects_to_remove, keep_objects)
-  if(length(to_remove) > 0) {
-    rm(list = to_remove, envir = .GlobalEnv)
-    message("Removed ", length(to_remove), " objects from environment")
-  }
-
-  # Force garbage collection
-  gc()
-
-  # Show memory usage
-  message("Memory usage after cleanup:")
-  message("  sa2_sf: ", format(object.size(sa2_sf), "MB"))
-  message("  road_infra_dt: ", format(object.size(road_infra_dt), "MB"))
-  message("  edges_dt_keyed: ", format(object.size(edges_dt_keyed), "MB"))
-  message("  transit_ufi_dict: ", format(object.size(transit_ufi_dict), "MB"))
-}
 
 # Main parallel processing function using FORK
 run_parallel_walking_isochrones <- function() {
 
-
-
-  # Clean environment first
-  cleanup_environment()
   num_cores = 8
   # Get list of all SA2s to process
   all_sa2s <- unique(sa2_sf$SA2_NAME21)
@@ -257,15 +231,15 @@ run_parallel_walking_isochrones <- function() {
 
 saveRDS(combined_results, 'rdata_output/walking_distances_new.Rdata')
 
-vis_res <- function(result) {
-  copal <- colorNumeric(palette = 'Reds', domain =  result$walking_time, reverse = T)
-  leaflet(result %>%
-            left_join(road_infra_joined %>% mutate(UFI = as.character(UFI)), by = 'UFI') %>%
-            st_set_geometry('geometry') %>%
-            st_transform('wgs84')) %>%
-    addProviderTiles('CartoDB.Positron') %>%
-    addCircleMarkers(color = ~copal(result$walking_time)) %>% print
-}
+# vis_res <- function(result) {
+#   copal <- colorNumeric(palette = 'Reds', domain =  result$walking_time, reverse = T)
+#   leaflet(result %>%
+#             left_join(road_infra_joined %>% mutate(UFI = as.character(UFI)), by = 'UFI') %>%
+#             st_set_geometry('geometry') %>%
+#             st_transform('wgs84')) %>%
+#     addProviderTiles('CartoDB.Positron') %>%
+#     addCircleMarkers(color = ~copal(result$walking_time)) %>% print
+# }
 
 vis_res <- function(result) {
   copal <- colorNumeric(palette = 'Reds', domain =  result$time_remaining, reverse = T)

@@ -5,7 +5,8 @@ initialise_gtfs <- function(gtfs_parameters, isochrone_params) {
                                           day = gtfs_parameters$day) %>%
     mutate(arrival_time = hms(arrival_time), departure_time = hms(departure_time)) %>%
     filter(departure_time < isochrone_params$time_limit_,
-           departure_time > hms(isochrone_params$start_time_))
+           departure_time > hms(isochrone_params$start_time_)) %>%
+    filter(!str_detect(stop_id, 'vic'))
 
 
   #initalise a sf of all stops

@@ -5,12 +5,15 @@ get_transit_ufi_dict <- function(vertices = NULL, stops = NULL) {
   } else {
     vertex_lookup <- setNames( vertices$UFI, 1:nrow(vertices))
 
-    stops_with_ufi <- stops %>% mutate( nearest_UFI =st_nearest_feature(stops, vertices) ) %>%
-      st_drop_geometry() %>%
+    stops_with_ufi <- stops %>%
+      mutate( nearest_UFI = st_nearest_feature(stops, vertices) ) %>%
+      st_drop_geometry () %>%
       mutate(nearest_UFI = vertex_lookup[nearest_UFI]) %>%
       left_join(vertices, by = c(nearest_UFI = 'UFI'))
 
-    transit_ufi_dict <- stops_with_ufi %>% select(stop_id, stop_name, nearest_UFI) %>% as.data.table()
+    transit_ufi_dict <- stops_with_ufi %>%
+      select(stop_id, stop_name, nearest_UFI) %>%
+      as.data.table()
 
     saveRDS(transit_ufi_dict, 'rdata_output/transit_ufi_dict.Rdata')
 
@@ -19,3 +22,36 @@ get_transit_ufi_dict <- function(vertices = NULL, stops = NULL) {
 
 }
 
+link_walk_stops <- function(){
+
+  transit_copy <- copy(transit_ufi_dict)
+  transit_copy <- transit_copy[!str_detect(stop_id, 'vic')]
+
+  transit_copy[, nearest_UFI := as.numeric(nearest_UFI)]
+  setkey(transit_copy, nearest_UFI)
+  setkey(all_walk, start_UFI)
+
+  walking_access_dict <- transit_copy[all_walk, on = c('nearest_UFI' = 'start_UFI'), allow.cartesian = T]
+
+
+  walking_access_dict <- walking_access_dict[, .SD[sample(.N, max(1, .N * 0.1))], by = stop_id]
+
+  setkey(walking_access_dict, stop_id)
+
+
+}
+
+map_ufi <- function(final_dest) {
+  final_dest %>%
+    select(UFI) %>%
+    distinct() %>%
+    as.data.frame() %>%
+    left_join(tr_road_infra, by = 'UFI') %>%
+    st_set_geometry('geometry') %>%
+    st_transform('wgs84')-> sf
+
+
+  leaflet(sf) %>%
+    addProviderTiles('CartoDB.Positron') %>%
+    addCircleMarkers()
+}

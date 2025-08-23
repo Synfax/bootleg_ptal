@@ -111,12 +111,13 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
       # Queue of vertices to process (start with starting vertex)
       queue <- c(start_vertex_index)
+      queue_head <- 1
 
-      while(length(queue) > 0) {
+      while(queue_head <= length(queue)) {
 
         # Process next vertex from queue
-        current_index <- queue[1]
-        queue <- queue[-1]
+        current_index <- queue[queue_head]
+        queue_head <- queue_head + 1
 
         # Skip if already visited
         if(visited[current_index]) next
@@ -146,7 +147,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
           # Filter using vectorized logical indexing (potentially faster than data.table subset)
           valid_mask <- neighbors$time_margin >= current_elapsed_time
-          
+
           if(any(valid_mask)) {
             # Get pre-computed destination vertex indices using logical indexing
             dest_indices <- neighbors$dest_vertex_index[valid_mask]
@@ -167,9 +168,23 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
       )
 
       # Add stop_id and time info for interpretation
-      result[vertex_metadata, `:=`(stop_id = i.stop_id, time_remaining = i.time_remaining), on = "vertex_index"]
+      #result[vertex_metadata, `:=`(stop_id = i.stop_id, time_remaining = i.time_remaining), on = "vertex_index"]
+      result[, `:=` (stop_id = (vertex_stop_ids[vertex_index]), time_remaining = vertex_time_remaining[vertex_index]) ]
+      setkey(result, stop_id)
+
+      #profvis({
+        # final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = 0L][
+        #   walking_time <= time_remaining  # Filter to walkable destinations
+        # ]
+
+      #})
+
+      final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = 0L][
+        walking_time <= time_remaining  # Filter to walkable destinations
+      ]
 
     })
+
 
     return(result)
   }
