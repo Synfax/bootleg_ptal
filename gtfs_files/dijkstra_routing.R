@@ -144,19 +144,17 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
         #if(!is.null(neighbors) && nrow(neighbors) > 0) {
 
-          # Filter to valid connections based on time constraints
-          valid_neighbors <- neighbors[
-              time_margin >= current_elapsed_time                # Sufficient slack time
-          ]
-
-          #if(nrow(valid_neighbors) > 0) {
-
-            # Get pre-computed destination vertex indices (no lookup needed!)
-            dest_indices <- valid_neighbors$dest_vertex_index
+          # Filter using vectorized logical indexing (potentially faster than data.table subset)
+          valid_mask <- neighbors$time_margin >= current_elapsed_time
+          
+          if(any(valid_mask)) {
+            # Get pre-computed destination vertex indices using logical indexing
+            dest_indices <- neighbors$dest_vertex_index[valid_mask]
 
             # Add unvisited destinations to queue
             new_vertices <- dest_indices[!visited[dest_indices]]
             queue <- unique(c(queue, new_vertices))
+          }
           #}
         #}
       }
