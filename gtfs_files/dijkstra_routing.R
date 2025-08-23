@@ -59,70 +59,89 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
   dijkstra_with_pruning <- function(start_vertex_index) {
 
-    start_vertex_index = 58812
+    profvis({
+      start_vertex_index = 58812
 
-    num_vertices <- max(vertex_metadata$vertex_index)
+      num_vertices <- max(vertex_metadata$vertex_index)
 
-    # Only track visited vertices - no distance tracking needed
-    visited <- rep(FALSE, num_vertices)
-    
-    # Queue of vertices to process (start with starting vertex)
-    queue <- c(start_vertex_index)
+      # Only track visited vertices - no distance tracking needed
+      visited <- rep(FALSE, num_vertices)
 
-    while(length(queue) > 0) {
+      # Track best time remaining seen per stop for temporal dominance (numeric indexing)
+      unique_stops <- unique(vertex_metadata$stop_id)
+      stop_to_numeric <- setNames(seq_along(unique_stops), unique_stops)
+      best_time_per_stop <- rep(0, length(unique_stops))  # numeric array for O(1) access
 
-      # Process next vertex from queue
-      current_index <- queue[1]
-      queue <- queue[-1]
-      
-      # Skip if already visited
-      if(visited[current_index]) next
+      # Queue of vertices to process (start with starting vertex)
+      queue <- c(start_vertex_index)
 
-      # Mark as visited
-      visited[current_index] <- TRUE
+      while(length(queue) > 0) {
 
-      # Get current vertex info (stop and time remaining encoded in vertex)
-      current_meta <- vertex_metadata[current_index]
-      current_stop <- current_meta$stop_id
-      current_time_remaining <- current_meta$time_remaining
-      current_elapsed_time <- max_time - current_time_remaining
+        # Process next vertex from queue
+        current_index <- queue[1]
+        queue <- queue[-1]
 
-      # Get ALL possible departures from this stop
-      neighbors <- adjacency_list[[current_stop]]
+        # Skip if already visited
+        if(visited[current_index]) next
 
-      if(!is.null(neighbors) && nrow(neighbors) > 0) {
+        # Get current vertex info (stop and time remaining encoded in vertex)
+        current_meta <- vertex_metadata[current_index]
+        current_stop <- current_meta$stop_id
+        current_time_remaining <- current_meta$time_remaining
+        current_elapsed_time <- max_time - current_time_remaining
 
-        # Filter to valid connections based on time constraints
-        valid_neighbors <- neighbors[
-          mins_left_at_dep_time <= current_time_remaining &  # Can catch this departure
-          time_margin >= current_elapsed_time                # Sufficient slack time
-        ]
+        # Temporal dominance: skip if we've already visited this stop with more time remaining
+        current_stop_numeric <- stop_to_numeric[current_stop]
+        if(best_time_per_stop[current_stop_numeric] >= current_time_remaining) {
+          # Skip this vertex - already have better time state for this stop
+          next
+        }
 
-        if(nrow(valid_neighbors) > 0) {
+        # Update best time remaining for this stop
+        best_time_per_stop[current_stop_numeric] <- current_time_remaining
 
-          # Calculate destination vertex indices
-          dest_vertex_names <- paste0(valid_neighbors$stop_id, "_", valid_neighbors$minutes_until_time_limit)
-          dest_indices <- vertex_to_index[dest_vertex_names]
-          dest_indices <- dest_indices[!is.na(dest_indices)]  # Remove invalid destinations
+        # Mark as visited
+        visited[current_index] <- TRUE
 
-          if(length(dest_indices) > 0) {
-            # Add unvisited destinations to queue
-            new_vertices <- dest_indices[!visited[dest_indices]]
-            queue <- unique(c(queue, new_vertices))
+        # Get ALL possible departures from this stop
+        neighbors <- adjacency_list[[current_stop]]
+
+        if(!is.null(neighbors) && nrow(neighbors) > 0) {
+
+          # Filter to valid connections based on time constraints
+          valid_neighbors <- neighbors[
+            mins_left_at_dep_time <= current_time_remaining &  # Can catch this departure
+              time_margin >= current_elapsed_time                # Sufficient slack time
+          ]
+
+          if(nrow(valid_neighbors) > 0) {
+
+            # Calculate destination vertex indices
+            dest_vertex_names <- paste0(valid_neighbors$stop_id, "_", valid_neighbors$minutes_until_time_limit)
+            dest_indices <- vertex_to_index[dest_vertex_names]
+            dest_indices <- dest_indices[!is.na(dest_indices)]  # Remove invalid destinations
+
+            if(length(dest_indices) > 0) {
+              # Add unvisited destinations to queue
+              new_vertices <- dest_indices[!visited[dest_indices]]
+              queue <- unique(c(queue, new_vertices))
+            }
           }
         }
       }
-    }
 
-    # Return all visited vertices
-    reachable_indices <- which(visited)
+      # Return all visited vertices
+      reachable_indices <- which(visited)
 
-    result <- data.table(
-      vertex_index = reachable_indices
-    )
+      result <- data.table(
+        vertex_index = reachable_indices
+      )
 
-    # Add stop_id and time info for interpretation
-    result[vertex_metadata, `:=`(stop_id = i.stop_id, time_remaining = i.time_remaining), on = "vertex_index"]
+      # Add stop_id and time info for interpretation
+      result[vertex_metadata, `:=`(stop_id = i.stop_id, time_remaining = i.time_remaining), on = "vertex_index"]
+
+    })
+
 
     return(result)
   }

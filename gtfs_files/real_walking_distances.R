@@ -268,11 +268,11 @@ vis_res <- function(result) {
 }
 
 vis_res <- function(result) {
-  copal <- colorNumeric(palette = 'Reds', domain =  result$walking_time, reverse = T)
+  copal <- colorNumeric(palette = 'Reds', domain =  result$time_remaining, reverse = T)
   leaflet(result %>%
             left_join(stops, by = 'stop_id') %>%
             st_set_geometry('geometry') %>%
             st_transform('wgs84')) %>%
     addProviderTiles('CartoDB.Positron') %>%
-    addCircleMarkers(color = ~copal(result$walking_time)) %>% print
+    addCircleMarkers(color = ~copal(result$time_remaining)) %>% print
 }
