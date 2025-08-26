@@ -77,77 +77,78 @@ transit_ufi_dict <- connect_stops_with_nodes(all_vertices, stops %>% st_transfor
 # Function to process a single SA2
 process_sa2 <- function(sa2) {
 
-  current_sa2_sf = sa2_sf %>%
-    filter(SA2_NAME21 == sa2)
-
-  buffer_size = minutes_willing_to_walk * 84
-
-  #get nodes in the current SF that will be our starting points
-  #now we need to find all the nodes we could walk to so we can keep the network small.
-  starting_nodes = road_infra_dt[sa2]
-
-  if(nrow(starting_nodes) == 0) {
-    message("No nodes found for SA2: ", sa2, " - skipping")
-    return(data.table())
-  }
-
-  starting_nodes[, UFI := as.character(UFI)]
-  #
-  # starting_nodes = starting_nodes[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
-  #
-  # if(nrow(starting_nodes) == 0) {
-  #   message("No transit-linked nodes found for SA2: ", sa2, " - skipping")
-  #   return(data.table())
-  # }
-
-  starting_nodes = starting_nodes$UFI
-
-  #buffer the sa2
-  buffered_sa2 <- st_buffer(current_sa2_sf, dist = buffer_size)
-
-  #find which other SA2s overlap with this buffer
-
-  overlap_indexes <- st_overlaps(buffered_sa2, sa2_sf) %>% unlist()
-  overlaps <- sa2_sf[overlap_indexes,]
-  overlapping_sa2_names <- overlaps$SA2_NAME21
-
-  #now we have all sa2s that could be reached within the absolute maximum walking time
-  #this will form the network we use.
-  #but we are only considering starting nodes in the sa2 in focus
-  all_tr_points_in_overlap <- road_infra_dt[c(overlapping_sa2_names, sa2)]
-
-  ## create vertices
-  vertices <- all_tr_points_in_overlap %>%
-    mutate(UFI = as.character(UFI)) %>%
-    as.data.table()
-
-  #create a smaller edges_list for each SA2 to reduce key retrieval times
-  edges_list = edges_dt_keyed[vertices$UFI]
-  edges_list = split(edges_list, edges_list$FROM_UFI)
-
-  # Create numeric vertex mapping (no character operations)
-  vertices[, vertex_index := .I]
-
-  # Pre-compute adjacency list with numeric indices for O(1) lookup
-  edges_list_numeric <- vector("list", nrow(vertices))
-
-  # Map UFI to numeric indices
-  ufi_to_index <- setNames(vertices$vertex_index, vertices$UFI)
-
-  # Convert edges_list to use numeric indices
-  for(i in seq_along(edges_list)) {
-    current_edges <- edges_list[[i]]
-    if(nrow(current_edges) > 0) {
-      from_ufi <- names(edges_list)[i]
-      from_index <- ufi_to_index[from_ufi]
-
-      # Pre-compute neighbor indices
-      current_edges[, to_index := ufi_to_index[TO_UFI]]
-      edges_list_numeric[[from_index]] <- current_edges[!is.na(to_index)]
-    }
-  }
-
   profvis({
+    current_sa2_sf = sa2_sf %>%
+      filter(SA2_NAME21 == sa2)
+
+    buffer_size = minutes_willing_to_walk * 84
+
+    #get nodes in the current SF that will be our starting points
+    #now we need to find all the nodes we could walk to so we can keep the network small.
+    starting_nodes = road_infra_dt[sa2]
+
+    if(nrow(starting_nodes) == 0) {
+      message("No nodes found for SA2: ", sa2, " - skipping")
+      return(data.table())
+    }
+
+    starting_nodes[, UFI := as.character(UFI)]
+    #
+    # starting_nodes = starting_nodes[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
+    #
+    # if(nrow(starting_nodes) == 0) {
+    #   message("No transit-linked nodes found for SA2: ", sa2, " - skipping")
+    #   return(data.table())
+    # }
+
+    starting_nodes = starting_nodes$UFI
+
+    #buffer the sa2
+    buffered_sa2 <- st_buffer(current_sa2_sf, dist = buffer_size)
+
+    #find which other SA2s overlap with this buffer
+
+    overlap_indexes <- st_overlaps(buffered_sa2, sa2_sf) %>% unlist()
+    overlaps <- sa2_sf[overlap_indexes,]
+    overlapping_sa2_names <- overlaps$SA2_NAME21
+
+    #now we have all sa2s that could be reached within the absolute maximum walking time
+    #this will form the network we use.
+    #but we are only considering starting nodes in the sa2 in focus
+    all_tr_points_in_overlap <- road_infra_dt[c(overlapping_sa2_names, sa2)]
+
+    ## create vertices
+    vertices <- all_tr_points_in_overlap %>%
+      mutate(UFI = as.character(UFI)) %>%
+      as.data.table()
+
+    #create a smaller edges_list for each SA2 to reduce key retrieval times
+    edges_list = edges_dt_keyed[vertices$UFI]
+    edges_list = split(edges_list, edges_list$FROM_UFI)
+
+    # Create numeric vertex mapping (no character operations)
+    vertices[, vertex_index := .I]
+
+    # Pre-compute adjacency list with numeric indices for O(1) lookup
+    edges_list_numeric <- vector("list", nrow(vertices))
+
+    # Map UFI to numeric indices
+    ufi_to_index <- setNames(vertices$vertex_index, vertices$UFI)
+
+    # Convert edges_list to use numeric indices
+    for(i in seq_along(edges_list)) {
+      current_edges <- edges_list[[i]]
+      if(nrow(current_edges) > 0) {
+        from_ufi <- names(edges_list)[i]
+        from_index <- ufi_to_index[from_ufi]
+
+        # Pre-compute neighbor indices
+        current_edges[, to_index := ufi_to_index[TO_UFI]]
+        edges_list_numeric[[from_index]] <- current_edges[!is.na(to_index)]
+      }
+    }
+
+    #profvis({
     starting_nodes %>% map_dfr(.f = function(starting_node) {
 
       #profvis({
@@ -214,14 +215,17 @@ process_sa2 <- function(sa2) {
       #toc()
 
     }) -> sa2_level_result
+    #})
+
+
+    fwrite(sa2_level_result, paste0('walking_isochrones_sa2/',sa2,'.csv'))
+
+    sa2_level_result_transit = sa2_level_result[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
+
+    return(sa2_level_result_transit)
   })
 
 
-  fwrite(sa2_level_result, paste0('walking_isochrones_sa2/',sa2,'.csv'))
-
-  sa2_level_result_transit = sa2_level_result[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
-
-  return(sa2_level_result_transit)
 }
 
 
@@ -259,6 +263,26 @@ run_parallel_walking_isochrones <- function() {
   # Combine results if needed
   combined_results <- rbindlist(results)
   return(combined_results)
+
+  #non parallelised version
+  ############################################################################
+#
+#
+#   all_sa2s <- unique(sa2_sf$SA2_NAME21)
+#
+#   start_time <- Sys.time()
+#
+#   results <- lapply(all_sa2s, process_sa2)
+#
+#   end_time <- Sys.time()
+#
+#   message("Parallel processing completed in ",
+#           round(difftime(end_time, start_time, units = "mins"), 2), " minutes")
+#
+#   # Combine results if needed
+#   combined_results <- rbindlist(results)
+#   return(combined_results)
+
 }
 
 saveRDS(combined_results, 'rdata_output/walking_distances_new.Rdata')
