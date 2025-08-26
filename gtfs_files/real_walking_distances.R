@@ -92,13 +92,13 @@ process_sa2 <- function(sa2) {
   }
 
   starting_nodes[, UFI := as.character(UFI)]
-
-  starting_nodes = starting_nodes[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
-
-  if(nrow(starting_nodes) == 0) {
-    message("No transit-linked nodes found for SA2: ", sa2, " - skipping")
-    return(data.table())
-  }
+  #
+  # starting_nodes = starting_nodes[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
+  #
+  # if(nrow(starting_nodes) == 0) {
+  #   message("No transit-linked nodes found for SA2: ", sa2, " - skipping")
+  #   return(data.table())
+  # }
 
   starting_nodes = starting_nodes$UFI
 
@@ -118,72 +118,104 @@ process_sa2 <- function(sa2) {
 
   ## create vertices
   vertices <- all_tr_points_in_overlap %>%
-    mutate(UFI = as.character(UFI))
+    mutate(UFI = as.character(UFI)) %>%
+    as.data.table()
 
   #create a smaller edges_list for each SA2 to reduce key retrieval times
   edges_list = edges_dt_keyed[vertices$UFI]
   edges_list = split(edges_list, edges_list$FROM_UFI)
 
-  # Set up tracking with integer indices for fast lookups
-  node_to_idx <- setNames(seq_along(vertices$UFI), vertices$UFI)
-  idx_to_node <- setNames(vertices$UFI, seq_along(vertices$UFI))
+  # Create numeric vertex mapping (no character operations)
+  vertices[, vertex_index := .I]
 
+  # Pre-compute adjacency list with numeric indices for O(1) lookup
+  edges_list_numeric <- vector("list", nrow(vertices))
 
-  starting_nodes %>% map_dfr(.f = function(starting_node) {
+  # Map UFI to numeric indices
+  ufi_to_index <- setNames(vertices$vertex_index, vertices$UFI)
 
-    #profvis({
+  # Convert edges_list to use numeric indices
+  for(i in seq_along(edges_list)) {
+    current_edges <- edges_list[[i]]
+    if(nrow(current_edges) > 0) {
+      from_ufi <- names(edges_list)[i]
+      from_index <- ufi_to_index[from_ufi]
 
-      #print(starting_node)
+      # Pre-compute neighbor indices
+      current_edges[, to_index := ufi_to_index[TO_UFI]]
+      edges_list_numeric[[from_index]] <- current_edges[!is.na(to_index)]
+    }
+  }
 
-      distances_vec <- rep(Inf, length(vertices$UFI))
-      distances_vec[node_to_idx[starting_node]] <- 0
-      visited_vec <- rep(FALSE, length(vertices$UFI))
+  profvis({
+    starting_nodes %>% map_dfr(.f = function(starting_node) {
 
-      unvisited_idx <- seq_along(vertices$UFI)
+      #profvis({
+      #tic()
 
-      while (length(unvisited_idx) > 0) {
-        # Find closest unvisited node using integer indexing
-        unvisited_distances <- distances_vec[unvisited_idx]
+      # Get starting node index (convert UFI to numeric index)
+      start_index <- ufi_to_index[starting_node]
 
-        min_pos <- which.min(unvisited_distances)
-        current_idx <- unvisited_idx[min_pos]
-        current_node <- idx_to_node[current_idx]
-        current_tracked_distance <- unvisited_distances[min_pos]
+      # Pure numeric arrays for tracking
+      num_vertices <- nrow(vertices)
+      distances_vec <- rep(Inf, num_vertices)
+      distances_vec[start_index] <- 0
+      visited_vec <- rep(FALSE, num_vertices)
 
-        # Early termination if we reach max distance
-        if(current_tracked_distance > buffer_size) break
+      # Use head pointer queue (from dijkstra optimization)
+      queue <- c(start_index)
+      queue_head <- 1
 
-        # Remove from unvisited
-        unvisited_idx <- unvisited_idx[-min_pos]
+      while (queue_head <= length(queue)) {
+        # Get current vertex (pure numeric operations)
+        current_index <- queue[queue_head]
+        queue_head <- queue_head + 1
+
+        # Skip if visited
+        if(visited_vec[current_index]) next
+
+        current_distance <- distances_vec[current_index]
+
+        # Early termination
+        if(current_distance > buffer_size) break
 
         # Mark as visited
-        visited_vec[current_idx] <- TRUE
+        visited_vec[current_index] <- TRUE
 
-        # Find reachable nodes
-        reachable_nodes <- edges_list[[current_node]]
+        # Get neighbors using numeric adjacency list (no character lookup!)
+        neighbors <- edges_list_numeric[[current_index]]
 
-        if(nrow(reachable_nodes) > 0) {
-          neighbor_idx <- node_to_idx[reachable_nodes$TO_UFI]
-          neighbor_distances <- distances_vec[neighbor_idx]
-          new_distances <- reachable_nodes$distance + current_tracked_distance
-          update_mask <- new_distances < neighbor_distances & !is.na(neighbor_distances)
+        if(!is.null(neighbors) && nrow(neighbors) > 0) {
+          # Pure vectorized operations
+          new_distances <- current_distance + neighbors$distance
+          neighbor_indices <- neighbors$to_index
 
+          # Update distances where we found better paths
+          update_mask <- new_distances < distances_vec[neighbor_indices]
           if(any(update_mask)) {
-            distances_vec[neighbor_idx[update_mask]] <- new_distances[update_mask]
+            distances_vec[neighbor_indices[update_mask]] <- new_distances[update_mask]
+
+            # Add to queue (avoiding duplicates)
+            new_vertices <- neighbor_indices[update_mask & !visited_vec[neighbor_indices]]
+            queue <- c(queue, new_vertices)
           }
         }
       }
 
-      # Create result
-      visited_nodes <- vertices$UFI[visited_vec]
+      # Create result using numeric indexing
+      visited_indices <- which(visited_vec)
       result <- data.table(
         start_UFI = starting_node,
-        UFI = visited_nodes,
-        distance = distances_vec[visited_vec],
-        walking_time = distances_vec[visited_vec] %/% 84
+        UFI = vertices$UFI[visited_indices],
+        distance = distances_vec[visited_indices],
+        walking_time = distances_vec[visited_indices] %/% 84
       )
-    #})
-  }) -> sa2_level_result
+      #})
+      #toc()
+
+    }) -> sa2_level_result
+  })
+
 
   fwrite(sa2_level_result, paste0('walking_isochrones_sa2/',sa2,'.csv'))
 
@@ -231,22 +263,25 @@ run_parallel_walking_isochrones <- function() {
 
 saveRDS(combined_results, 'rdata_output/walking_distances_new.Rdata')
 
-# vis_res <- function(result) {
-#   copal <- colorNumeric(palette = 'Reds', domain =  result$walking_time, reverse = T)
-#   leaflet(result %>%
-#             left_join(road_infra_joined %>% mutate(UFI = as.character(UFI)), by = 'UFI') %>%
-#             st_set_geometry('geometry') %>%
-#             st_transform('wgs84')) %>%
-#     addProviderTiles('CartoDB.Positron') %>%
-#     addCircleMarkers(color = ~copal(result$walking_time)) %>% print
-# }
-
 vis_res <- function(result) {
-  copal <- colorNumeric(palette = 'Reds', domain =  result$time_remaining, reverse = T)
+  copal <- colorNumeric(palette = 'Reds', domain =  result$walking_time, reverse = T)
   leaflet(result %>%
-            left_join(stops, by = 'stop_id') %>%
+            left_join(road_infra_joined %>% mutate(UFI = as.character(UFI)), by = 'UFI') %>%
             st_set_geometry('geometry') %>%
             st_transform('wgs84')) %>%
     addProviderTiles('CartoDB.Positron') %>%
-    addCircleMarkers(color = ~copal(result$time_remaining)) %>% print
+    addCircleMarkers(data = (vertices %>% left_join(road_infra_joined %>% mutate(UFI = as.character(UFI)), by = 'UFI') %>% mutate(UFI = as.character(UFI), by = 'UFI')) %>%
+                       st_set_geometry('geometry') %>%
+                       st_transform('wgs84'), color = 'grey',  )  %>%
+    addCircleMarkers(color = ~copal(result$walking_time))
 }
+
+# vis_res <- function(result) {
+#   copal <- colorNumeric(palette = 'Reds', domain =  result$time_remaining, reverse = T)
+#   leaflet(result %>%
+#             left_join(stops, by = 'stop_id') %>%
+#             st_set_geometry('geometry') %>%
+#             st_transform('wgs84')) %>%
+#     addProviderTiles('CartoDB.Positron') %>%
+#     addCircleMarkers(color = ~copal(result$time_remaining)) %>% print
+# }
