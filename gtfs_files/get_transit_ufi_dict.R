@@ -22,31 +22,7 @@ get_transit_ufi_dict <- function(vertices = NULL, stops = NULL) {
 
 }
 
-link_walk_stops <- function(){
 
-  walking_files <- list.files('walking_isochrones_sa2/')
-
-  walking_files %>% map_dfr(.f = function(file){
-    fread(paste0('walking_isochrones_sa2/',file))
-  }) -> all_walk
-
-  all_walk[, start_UFI := as.numeric(start_UFI)]
-
-  transit_copy <- copy(transit_ufi_dict)
-  transit_copy <- transit_copy[!str_detect(stop_id, 'vic')]
-
-  transit_copy[, nearest_UFI := as.numeric(nearest_UFI)]
-  setkey(transit_copy, nearest_UFI)
-  setkey(all_walk, start_UFI)
-
-  walking_access_dict <- transit_copy[all_walk, on = c('nearest_UFI' = 'start_UFI'), allow.cartesian = T]
-
-  walking_access_dict <- walking_access_dict[, .SD[sample(.N, max(1, .N * 0.1))], by = stop_id]
-
-  setkey(walking_access_dict, stop_id)
-
-  return(walking_access_dict)
-}
 
 map_ufi <- function(final_dest) {
   final_dest %>%

@@ -1,7 +1,3 @@
-# Time-expanded Dijkstra routing with stop+time vertices and stop-based adjacency
-# Clean implementation with numeric indexing
-library(data.table)
-
 dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 46) {
 
   # =============================================================================
@@ -98,7 +94,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
   dijkstra_with_pruning <- function(start_vertex_index) {
 
-    #profvis({
+    profvis({
 
       num_vertices <- max(vertex_metadata$vertex_index)
 
@@ -182,10 +178,14 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
         walking_time <= time_remaining  # Filter to walkable destinations
       ]
 
-      UFIs <- as.character(unique(final_destinations$UFI))
-      employment <- sum(ufi_employment_fractions[UFIs]$total_allocated_employment)
 
-    #})
+      mesh_blocks = as.character(unique(final_destinations$MB_CODE21))
+      employment = sum(mb_employment_dict[mesh_blocks])
+
+      # UFIs <- as.character(unique(final_destinations$UFI))
+      # employment <- sum(ufi_employment_fractions[UFIs]$total_allocated_employment)
+
+    })
 
     return(data.table(empl = employment))
   }
