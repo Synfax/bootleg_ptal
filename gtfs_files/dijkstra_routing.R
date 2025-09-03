@@ -94,7 +94,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
   dijkstra_with_pruning <- function(start_vertex_index) {
 
-    profvis({
+    #profvis({
 
       num_vertices <- max(vertex_metadata$vertex_index)
 
@@ -149,7 +149,16 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
             # Add unvisited destinations to queue
             new_vertices <- dest_indices[!visited[dest_indices]]
-            queue <- unique(c(queue, new_vertices))
+            #queue <- unique(c(queue, new_vertices))
+            if(length(new_vertices) > 0) {
+              queue <- c(queue, new_vertices)
+              # Remove duplicates only when queue gets large
+              if(length(queue) > 10000) {
+                queue <- unique(queue)
+              }
+            }
+            #queue <- unique(c(queue, new_vertices))
+
           }
           #}
         #}
@@ -167,25 +176,19 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
       result[, `:=` (stop_id = (vertex_stop_ids[vertex_index]), time_remaining = vertex_time_remaining[vertex_index]) ]
       setkey(result, stop_id)
 
-      #profvis({
-        # final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = 0L][
-        #   walking_time <= time_remaining  # Filter to walkable destinations
-        # ]
 
-      #})
-
-      final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = 0L][
+      final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = NULL][
         walking_time <= time_remaining  # Filter to walkable destinations
       ]
 
 
       mesh_blocks = as.character(unique(final_destinations$MB_CODE21))
-      employment = sum(mb_employment_dict[mesh_blocks])
+      employment = sum(mb_employment_dict[mesh_blocks]$jobs, na.rm = T)
 
       # UFIs <- as.character(unique(final_destinations$UFI))
       # employment <- sum(ufi_employment_fractions[UFIs]$total_allocated_employment)
 
-    })
+    #})
 
     return(data.table(empl = employment))
   }
@@ -196,6 +199,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
   # Find starting vertex indices (stops at max_time)
 
+  start_time <- Sys.time()
   vertex_metadata %>%
     as.data.frame() %>%
     group_by(stop_id) %>%
@@ -222,6 +226,9 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
   }))
 
   all_results[, stop_id := vertex_stop_ids[start_vertex_index]]
+  end_time <- Sys.time()
+
+  message('time elapsed:', (end_time - start_time))
 
   {
     all_results %>%
