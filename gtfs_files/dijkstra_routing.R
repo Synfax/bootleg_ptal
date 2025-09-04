@@ -12,6 +12,8 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
   all_vertex_pairs <- unique(rbind(source_pairs, dest_pairs))
   setkey(all_vertex_pairs, stop_id, time)
 
+  max_time = 46
+
   # Create numeric vertex indices
   all_vertex_pairs[, vertex_index := .I]
 

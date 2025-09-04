@@ -23,7 +23,7 @@ source('gtfs_files/calculate_walking_distances.R')
 source('gtfs_files/generate_place_registry.R')
 source('gtfs_files/parallel_fork_processing.R')
 source('gtfs_files/get_transit_ufi_dict.R')
-source('gtfs_files/employment/employment.R')
+source('gtfs_files/employment/employment_mb.R')
 source('gtfs_files/link_walk_stops.R')
 
 #settings - core count and whether to enable parallel processing
@@ -82,8 +82,9 @@ message('Loading place registry')
 transit_ufi_dict <- get_transit_ufi_dict()
 walking_distances <- calculate_walking_distances()
 place_registry <<- generate_place_registry(doParallel, num_cores)
+master_mb_ufi <<- get_master_mb_ufi()
 walking_access_dict <<- link_walk_stops()
-
+mb_employment_dict <<- employment_mb()
 
 plan('default')
 

@@ -1,4 +1,4 @@
-get_starting_points <- function() {
+get_master_mb_ufi <- function() {
 
   mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
     filter(GCC_NAME21 == 'Greater Melbourne')
@@ -17,8 +17,10 @@ get_starting_points <- function() {
   master_mb_ufi <- tr_road_infra[nearest_index,] %>%
     mutate(
       MB_CODE21 = mb_centroids$MB_CODE21
-    )
+    ) %>%
+    st_drop_geometry() %>%
+    as.data.table()
 
-
+  return(master_mb_ufi)
 
 }
