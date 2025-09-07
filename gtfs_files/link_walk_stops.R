@@ -11,7 +11,10 @@ link_walk_stops <- function(){
 
   #make large dt of all walking connections (ALL UFIs)
   all_walk[, start_UFI := as.character(start_UFI)]
+
+  #left join with master_mb_ufi to only show rows where a UFI is a MB
   all_walk = all_walk[master_mb_ufi, on = 'UFI', nomatch = NULL]
+
   #filter all walk to only those that are equivalent to centroid of mesh blocks
 
 

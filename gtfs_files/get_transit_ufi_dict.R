@@ -3,6 +3,8 @@ get_transit_ufi_dict <- function(vertices = NULL, stops = NULL) {
   if(file.exists('rdata_output/transit_ufi_dict.Rdata')) {
     return(readRDS('rdata_output/transit_ufi_dict.Rdata'))
   } else {
+
+    #TODO: this is obviously broken because VERTICES isn't global scope
     vertex_lookup <- setNames( vertices$UFI, 1:nrow(vertices))
 
     stops_with_ufi <- stops %>%
@@ -22,19 +24,3 @@ get_transit_ufi_dict <- function(vertices = NULL, stops = NULL) {
 
 }
 
-
-
-map_ufi <- function(final_dest) {
-  final_dest %>%
-    select(UFI) %>%
-    distinct() %>%
-    as.data.frame() %>%
-    left_join(tr_road_infra, by = 'UFI') %>%
-    st_set_geometry('geometry') %>%
-    st_transform('wgs84')-> sf
-
-
-  leaflet(sf) %>%
-    addProviderTiles('CartoDB.Positron') %>%
-    addCircleMarkers()
-}

@@ -1,50 +1,54 @@
 final_mb_result <- function() {
 
-  #find highest time per vertex
-  starting_vertices %>%
-    select(stop_id, time_remaining) %>%
-    as.data.table() -> starting_times_dict
+  #current attempt ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+#   #find highest time per vertex
+#   starting_vertices %>%
+#     select(stop_id, time_remaining) %>%
+#     as.data.table() -> starting_times_dict
+#
+#   all_res <- copy(all_results)
+#
+#   all_res = all_res %>%
+#     select(empl, stop_id) %>%
+#     st_drop_geometry()
+#
+#   final_result <- copy(master_mb_ufi)
+#   final_result[, UFI := as.character(UFI)]
+#   setkey(final_result, 'UFI')
+#
+#
+#   list.files('walking_isochrones_sa2/') %>%
+#     map_dfr(.f = function(file){
+#     fread(paste0('walking_isochrones_sa2/',file))
+#   }) -> all_walk
+#
+#   #make large dt of all walking connections (ALL UFIs)
+#   all_walk[, UFI := as.character(UFI)]
+#   setkey(all_walk, UFI)
+#   setkey(transit_ufi_dict, nearest_UFI)
+#   all_walk = all_walk[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
+#
+#   all_walk[, start_UFI := as.character(start_UFI)]
+#   setkey(all_walk, start_UFI)
+#
+#   test <- (final_result)[all_walk, on = c('UFI' = 'start_UFI'), nomatch = NULL]
+#
+#   walking_adjustment = 5
+#   test = test[starting_times_dict, on = 'stop_id', nomatch = 0L][(walking_time - walking_adjustment) <= (46-time_remaining)]
+#
+#   test = test[all_res, on = 'stop_id', nomatch = 0L]
+#
+#   test[, .SD[which.max(empl)], by = 'MB_CODE21'] -> final_results
+#
+#   final_results %>%
+#     as.data.frame() %>%
+#     left_join(mb_sf, by = 'MB_CODE21') %>%
+#     st_set_geometry('geometry') -> final_sf
+#
+#   st_write(final_sf, 'sf_output/final_sf.gpkg', append = F)
 
-  all_res <- copy(all_results)
-
-  all_res = all_res %>%
-    select(empl, stop_id) %>%
-    st_drop_geometry()
-
-  final_result <- copy(master_mb_ufi)
-  final_result[, UFI := as.character(UFI)]
-  setkey(final_result, 'UFI')
-
-
-  list.files('walking_isochrones_sa2/') %>%
-    map_dfr(.f = function(file){
-    fread(paste0('walking_isochrones_sa2/',file))
-  }) -> all_walk
-
-  #make large dt of all walking connections (ALL UFIs)
-  all_walk[, UFI := as.character(UFI)]
-  setkey(all_walk, UFI)
-  setkey(transit_ufi_dict, nearest_UFI)
-  all_walk = all_walk[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
-
-  all_walk[, start_UFI := as.character(start_UFI)]
-  setkey(all_walk, start_UFI)
-
-  test <- (final_result)[all_walk, on = c('UFI' = 'start_UFI'), nomatch = NULL]
-
-  walking_adjustment = 5
-  test = test[starting_times_dict, on = 'stop_id', nomatch = 0L][(walking_time - walking_adjustment) <= (46-time_remaining)]
-
-  test = test[all_res, on = 'stop_id', nomatch = 0L]
-
-  test[, .SD[which.max(empl)], by = 'MB_CODE21'] -> final_results
-
-  final_results %>%
-    as.data.frame() %>%
-    left_join(mb_sf, by = 'MB_CODE21') %>%
-    st_set_geometry('geometry') -> final_sf
-
-  st_write(final_sf, 'sf_output/final_sf.gpkg')
+  #prior attempt ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   # all_res <- copy(all_results)
   # setkey(all_res, stop_id)
