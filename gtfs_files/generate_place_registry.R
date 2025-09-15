@@ -65,7 +65,8 @@ generate_place_registry <- function(doParallel, num_cores) {
 
 
       #what it's doing: For each trip, it's finding the first/earliest stop where you can board (the stop with the most time remaining until the time limit).
-      departures_from_transfer_stops <- departures_from_transfer_stops[, .SD[which.max(minutes_until_time_limit)], by = trip_id]
+      #changed to time_left_after_walking (to stop people walking to Anstey from Brunswick (which takes 8m and messes up time_margin))
+      departures_from_transfer_stops <- departures_from_transfer_stops[, .SD[which.max(time_left_after_walking)], by = trip_id]
 
       #dont need to recalculate min stop sequences, its literally already present in stop_to_departures
       #now you find all the places you can get to

@@ -23,6 +23,7 @@ source('gtfs_files/get_transit_ufi_dict.R')
 source('gtfs_files/employment/employment_mb.R')
 source('gtfs_files/link_walk_stops.R')
 source('gtfs_files/mb_centroids_ufi.R')
+source('gtfs_files/find_starting_indices.R')
 
 #settings - core count and whether to enable parallel processing
   #enable parallel processing (required for sub ~4 hour processing time)
@@ -84,6 +85,7 @@ place_registry <<- generate_place_registry(doParallel, num_cores)
 master_mb_ufi <<- get_master_mb_ufi()
 walking_access_dict <<- link_walk_stops()
 mb_employment_dict <<- employment_mb()
+test <<- find_starting_indices()
 
 plan('default')
 

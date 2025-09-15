@@ -33,7 +33,9 @@ find_starting_indices <- function() {
 
   test <- test[sources, on = 'stop_id', nomatch = 0L, allow.cartesian = T][walking_time + time <= max_time][, .SD[which.max(time)], by = 'MB_CODE21']
 
-  start_points <- unique(test[,.(stop_id, time)])
+  #start_points <- unique(test[,.(stop_id, time)])
+
+  return(test)
 
   #alt version
 
@@ -62,19 +64,19 @@ find_starting_indices <- function() {
   #
 
 
-  tr_road_infra <- read_sf('sf_input/tr_road_infrastructure/Order_08APF2/mga2020_55/esrishape/customised_delivery/MELBOURNE_WATER-0/VMTRANS/TR_ROAD_INFRASTRUCTURE.shp')
-  tr_road_infra <- tr_road_infra %>%
-    st_transform(7855) %>%
-    select(UFI)
-
-  leaflet() %>%
-    addProviderTiles('CartoDB.Positron') %>%
-    addCircleMarkers(data = (  tr_road_infra %>%
-                                 filter(UFI == 2289021) %>%
-                                 st_transform('wgs84'))) %>%
-    addCircleMarkers(data = (  tr_road_infra %>%
-                                 filter(UFI == 2288574) %>%
-                                 st_transform('wgs84')), color = 'red')
+  # tr_road_infra <- read_sf('sf_input/tr_road_infrastructure/Order_08APF2/mga2020_55/esrishape/customised_delivery/MELBOURNE_WATER-0/VMTRANS/TR_ROAD_INFRASTRUCTURE.shp')
+  # tr_road_infra <- tr_road_infra %>%
+  #   st_transform(7855) %>%
+  #   select(UFI)
+  #
+  # leaflet() %>%
+  #   addProviderTiles('CartoDB.Positron') %>%
+  #   addCircleMarkers(data = (  tr_road_infra %>%
+  #                                filter(UFI == 2289021) %>%
+  #                                st_transform('wgs84'))) %>%
+  #   addCircleMarkers(data = (  tr_road_infra %>%
+  #                                filter(UFI == 2288574) %>%
+  #                                st_transform('wgs84')), color = 'red')
 
 
 

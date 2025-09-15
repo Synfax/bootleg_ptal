@@ -108,7 +108,9 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
   dijkstra_with_pruning <- function(start_vertex_index) {
 
-    #profvis({
+    #print(start_vertex_index)
+
+    profvis({
 
       num_vertices <- max(vertex_metadata$vertex_index)
 
@@ -151,6 +153,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
         # Get ALL possible departures from this stop (using numeric index)
         neighbors <- adjacency_list[[current_stop_numeric]]
+        #neighbors[, stop_name := stop_id_to_name[stop_id]]
 
         #if(!is.null(neighbors) && nrow(neighbors) > 0) {
 
@@ -190,19 +193,23 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
       result[, `:=` (stop_id = (vertex_stop_ids[vertex_index]), time_remaining = vertex_time_remaining[vertex_index]) ]
       setkey(result, stop_id)
 
+      #result[, stop_name := stop_id_to_name[stop_id]]
 
-      final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = NULL][
+
+      #find which final walking UFIs I can walk to after I get off my last connection
+      final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = NULL, allow.cartesian = T][
         walking_time <= time_remaining  # Filter to walkable destinations
       ]
 
-
+      #get the mesh block IDs of all of the UFIs I can walk to
       mesh_blocks = as.character(unique(final_destinations$MB_CODE21))
+
       employment = sum(mb_employment_dict[mesh_blocks]$jobs, na.rm = T)
 
       # UFIs <- as.character(unique(final_destinations$UFI))
       # employment <- sum(ufi_employment_fractions[UFIs]$total_allocated_employment)
 
-    #})
+    })
 
     return(data.table(empl = employment))
   }
