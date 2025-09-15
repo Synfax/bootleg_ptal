@@ -1,5 +1,32 @@
 final_mb_result <- function() {
 
+
+
+  all_res <- copy(all_results)
+  all_res[, name := names(vertex_to_index[start_vertex_index]) ]
+
+  #from find_starting_indices
+  starting_index_df <- test[,.(MB_CODE21, stop_id, walking_time)]
+  starting_index_df[, time := max_time - walking_time]
+  starting_index_df[, name := paste0(stop_id, '_', time)]
+
+  final_result <- starting_index_df[all_res, on = c('name'), nomatch = NULL]
+
+  mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
+    filter(GCC_NAME21 == 'Greater Melbourne') %>%
+    st_transform(7855)
+
+  final_result <- final_result %>%
+    left_join(mb_sf, by = 'MB_CODE21')
+
+  write_sf(final_result, 'sf_output/final_result.gpkg')
+
+
+  mb_test <- mb_sf %>%
+    filter(MB_CODE21 %in% mesh_blocks)
+
+  write_sf(mb_test, 'sf_output/mb_test.gpkg')
+
   #current attempt ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
 #   #find highest time per vertex

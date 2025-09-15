@@ -52,7 +52,7 @@ reset_storage()
 #set gtfs parameters
 gtfs_parameters =  list(
   mode_numbers = 2:4,
-  day = 'tuesday',
+  day = 'monday',
   city = 'melbourne'
 )
 
@@ -62,6 +62,7 @@ isochrone_params = list(
   xfer_penalty_ = hms("00:05:00")
 )
 
+max_time <- 46
 #preload hash tables and gtfs tables for use later
 initialise_gtfs(gtfs_parameters, isochrone_params)
 

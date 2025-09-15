@@ -72,12 +72,11 @@ all_vertices <- tr_road_infra %>%
 
 ##do PT linkage
 
-transit_ufi_dict <- connect_stops_with_nodes(all_vertices, stops %>% st_transform(7855))
-
+transit_ufi_dict <- get_transit_ufi_dict()
 # Function to process a single SA2
 process_sa2 <- function(sa2) {
 
-  profvis({
+  #profvis({
     current_sa2_sf = sa2_sf %>%
       filter(SA2_NAME21 == sa2)
 
@@ -108,7 +107,8 @@ process_sa2 <- function(sa2) {
 
     #find which other SA2s overlap with this buffer
 
-    overlap_indexes <- st_overlaps(buffered_sa2, sa2_sf) %>% unlist()
+    overlap_indexes <- st_intersects(buffered_sa2, sa2_sf) %>%
+      unlist()
     overlaps <- sa2_sf[overlap_indexes,]
     overlapping_sa2_names <- overlaps$SA2_NAME21
 
@@ -137,15 +137,21 @@ process_sa2 <- function(sa2) {
 
     # Convert edges_list to use numeric indices
     for(i in seq_along(edges_list)) {
+
+      #iterate thru the split() dt and fix it up
       current_edges <- edges_list[[i]]
+
       if(nrow(current_edges) > 0) {
+
         from_ufi <- names(edges_list)[i]
         from_index <- ufi_to_index[from_ufi]
 
         # Pre-compute neighbor indices
         current_edges[, to_index := ufi_to_index[TO_UFI]]
         edges_list_numeric[[from_index]] <- current_edges[!is.na(to_index)]
+
       }
+
     }
 
     #profvis({
@@ -211,6 +217,7 @@ process_sa2 <- function(sa2) {
         distance = distances_vec[visited_indices],
         walking_time = distances_vec[visited_indices] %/% 84
       )
+
       #})
       #toc()
 
@@ -223,7 +230,7 @@ process_sa2 <- function(sa2) {
     sa2_level_result_transit = sa2_level_result[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
 
     return(sa2_level_result_transit)
-  })
+  #})
 
 
 }
