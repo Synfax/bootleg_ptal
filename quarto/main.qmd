@@ -1,5 +1,69 @@
 ---
-title: "main"
+title: "Untitled"
 format: html
+server: shiny
 ---
 
+## Shiny Documents
+
+This Quarto document is made interactive using Shiny. Interactive documents allow readers to modify parameters and see the results immediately. Learn more about Shiny interactive documents at <https://quarto.org/docs/interactive/shiny/>.
+
+## Inputs and OutputsS
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change. This demonstrates how a standard R plot can be made interactive:'
+
+```{r}
+#| context: setup
+#| include: false
+
+library(sf)
+library(rdeck)
+
+hex_grid <- read_sf('sf_input/melbourne_hex_grid.gpkg')
+mesh_block_sf <- read_sf('sf_input/mb_sf.gpkg')
+
+
+```
+
+```{r}
+#| panel: sidebar
+actionButton("toggle_layer", "Switch Layer", class = "btn-primary")
+```
+
+```{r}
+rdeckOutput("map", width = "100%", height = "500px")
+```
+
+```{r}
+#| context: server
+output$map <- renderRdeck({
+  
+   # React to button press
+  layer_type <- input$toggle_layer %% 2
+  
+  base_map <- rdeck(initial_bounds = st_bbox(mesh_block_sf))
+    
+  
+  if (layer_type == 0) {
+    # Layer 1: Points
+    base_map %>%
+      add_polygon_layer(
+        data = mesh_block_sf,
+        get_polygon = geom,
+        get_fill_color = scale_color_quantile(value_column, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+        pickable = TRUE
+      )
+  } else {
+    # Layer 2: Polygons
+    base_map %>%
+      add_polygon_layer(opacity = 0.5,
+        data = hex_grid,
+        get_polygon = geom,
+        get_fill_color = scale_color_quantile(max_employment, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+        pickable = TRUE
+      )
+  }
+  
+
+})
+```
