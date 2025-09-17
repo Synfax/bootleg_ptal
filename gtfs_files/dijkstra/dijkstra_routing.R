@@ -110,7 +110,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
     #print(start_vertex_index)
 
-    profvis({
+    #profvis({
 
       num_vertices <- max(vertex_metadata$vertex_index)
 
@@ -121,10 +121,14 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
       best_time_per_stop <- rep(0, length(unique_stops))  # numeric array for O(1) access
 
       # Queue of vertices to process (start with starting vertex)
-      queue <- c(start_vertex_index)
+      queue <- integer(num_vertices)  # Pre-allocated queue
+      queue[1] <- start_vertex_index
+      queued <- rep(FALSE, num_vertices)  # Track what's been queued
+      queued[start_vertex_index] <- TRUE
       queue_head <- 1
+      queue_tail <- 1
 
-      while(queue_head <= length(queue)) {
+      while(queue_head <= queue_tail) {
 
         # Process next vertex from queue
         current_index <- queue[queue_head]
@@ -164,17 +168,19 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
             # Get pre-computed destination vertex indices using logical indexing
             dest_indices <- neighbors$dest_vertex_index[valid_mask]
 
-            # Add unvisited destinations to queue
-            new_vertices <- dest_indices[!visited[dest_indices]]
-            #queue <- unique(c(queue, new_vertices))
+            # Add unvisited and unqueued destinations to queue
+            unqueued_mask <- !visited[dest_indices] & !queued[dest_indices]
+            new_vertices <- dest_indices[unqueued_mask]
+
             if(length(new_vertices) > 0) {
-              queue <- c(queue, new_vertices)
-              # Remove duplicates only when queue gets large
-              if(length(queue) > 10000) {
-                queue <- unique(queue)
-              }
+              # Add to pre-allocated queue
+              next_tail <- queue_tail + length(new_vertices)
+              queue[(queue_tail + 1):next_tail] <- new_vertices
+              queue_tail <- next_tail
+
+              # Mark as queued
+              queued[new_vertices] <- TRUE
             }
-            #queue <- unique(c(queue, new_vertices))
 
           }
           #}
@@ -196,20 +202,26 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
       #result[, stop_name := stop_id_to_name[stop_id]]
 
 
-      #find which final walking UFIs I can walk to after I get off my last connection
-      final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = NULL, allow.cartesian = T][
-        walking_time <= time_remaining  # Filter to walkable destinations
-      ]
+      #PTION 1
+      {
+        #find which final walking UFIs I can walk to after I get off my last connection
+        final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = NULL, allow.cartesian = T][
+          walking_time <= time_remaining  # Filter to walkable destinations
+        ]
 
-      #get the mesh block IDs of all of the UFIs I can walk to
-      mesh_blocks = as.character(unique(final_destinations$MB_CODE21))
+        #get the mesh block IDs of all of the UFIs I can walk to
+        mesh_blocks = as.character(unique(final_destinations$MB_CODE21))
 
-      employment = sum(mb_employment_dict[mesh_blocks]$jobs, na.rm = T)
+        employment = sum(mb_employment_dict[mesh_blocks]$jobs, na.rm = T)
+
+      }
+
+
 
       # UFIs <- as.character(unique(final_destinations$UFI))
       # employment <- sum(ufi_employment_fractions[UFIs]$total_allocated_employment)
 
-    })
+    #})
 
     return(data.table(empl = employment))
   }
