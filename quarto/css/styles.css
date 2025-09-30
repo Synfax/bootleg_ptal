@@ -1,0 +1,15 @@
+@font-face {
+  font-family: 'Berkeley Mono';
+  src: url('/font/250930YL9X749475/TX-02-2JX5KJKV/BerkeleyMonoTrial-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+body {
+  font-family: 'Berkeley Mono', monospace;
+}
+
+/* Optional: Keep monospace specifically for code blocks */
+code, pre {
+  font-family: 'Berkeley Mono', monospace;
+}

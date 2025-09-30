@@ -26,6 +26,7 @@ source('gtfs_files/mb_centroids_ufi.R')
 source('gtfs_files/find_starting_indices.R')
 source('gtfs_files/create_master_amenity_mb_dict.R')
 source('gtfs_files/dijkstra/dijkstra_routing.R')
+source('gtfs_files/final_mesh_block_result.R')
 
 #settings - core count and whether to enable parallel processing
   #enable parallel processing (required for sub ~4 hour processing time)
@@ -55,7 +56,7 @@ reset_storage()
 #set gtfs parameters
 gtfs_parameters =  list(
   mode_numbers = 2:4,
-  day = 'monday',
+  day = 'tuesday',
   city = 'melbourne'
 )
 
@@ -88,6 +89,6 @@ master_amenity_dt <<- create_master_amenity_mb_dict()
 
 all_results <<- dijkstra_transit_routing()
 
-
+package_final_sf()
 
 

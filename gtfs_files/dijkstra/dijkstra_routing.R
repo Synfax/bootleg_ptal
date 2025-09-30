@@ -30,7 +30,9 @@ dijkstra_transit_routing <- function() {
   # Create fast lookup: "stop_time" -> numeric_index
   vertex_to_index <- all_vertex_pairs$vertex_index
 
-  names(vertex_to_index) = paste0(all_vertex_pairs$stop_id, "_", all_vertex_pairs$time)
+  names(vertex_to_index) <- paste0(all_vertex_pairs$stop_id, "_", all_vertex_pairs$time)
+
+  vertex_to_index <<- vertex_to_index
 
   # Store vertex metadata for algorithm
   vertex_metadata <- data.table(
@@ -226,6 +228,7 @@ dijkstra_transit_routing <- function() {
     #})
 
     final_values <- total_amenity[, lapply(.SD, sum, na.rm = TRUE)]
+    final_values[, mesh_block_list := list(mesh_blocks)]
     return(final_values)
   }
 

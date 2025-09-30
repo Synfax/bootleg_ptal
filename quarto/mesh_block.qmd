@@ -1,0 +1,25 @@
+---
+title: "Mesh block"
+format:
+  html:
+    theme: zephyr
+    toc: true
+    css: css/styles.css
+server: shiny
+params:
+  mb_code: "mtcars"
+---
+
+#Mesh block level exploration
+
+```{r}
+#| context: setup
+library(shiny)
+library(tidyverse)
+
+
+```
+
+## Exploring: `r params$dataset`
+
+This document is analyzing the **`r params$mb_code`** dataset.

@@ -1,4 +1,4 @@
-final_mb_result <- function() {
+package_final_sf <- function() {
 
   all_res <- copy(all_results)
   all_res[, name := names(vertex_to_index[start_vertex_index]) ]
@@ -16,11 +16,15 @@ final_mb_result <- function() {
   trimmed_results = final_result_dt[,.(mb_code21, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
     as.data.frame()
 
+  fwrite(trimmed_results, 'rdata_output/trimmed_results.csv')
+
   trimmed_scores <- trimmed_results %>%
     mutate(jobs = round(jobs,2)) %>%
     mutate(across(!mb_code21, ~percent_rank(.x))) %>%
     rowwise() %>%
     mutate(total_score = sum(across(!mb_code21)), MB_CODE21 = mb_code21)
+
+  fwrite(trimmed_scores, 'rdata_output/trimmed_scores.csv')
 
   mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
     filter(GCC_NAME21 == 'Greater Melbourne') %>%
@@ -30,8 +34,9 @@ final_mb_result <- function() {
     select(!mb_code21) %>%
     left_join(mb_sf, by = 'MB_CODE21')
 
-  write_sf(final_result, 'sf_output/final_result.gpkg')
+  write_sf(final_result, 'sf_output/final_result.gpkg', append = F)
 
+  return(final_result)
 
   # mb_test <- mb_sf %>%
   #   filter(MB_CODE21 %in% mesh_blocks)
