@@ -46,7 +46,7 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#exploring" id="toc-exploring" class="nav-link active" data-scroll-target="#exploring">Exploring:</a></li>
+  <li><a href="#current-mesh-block" id="toc-current-mesh-block" class="nav-link active" data-scroll-target="#current-mesh-block">Current Mesh Block</a></li>
   </ul>
 </nav>
 </div>
@@ -71,6 +71,7 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 
+<p>#Mesh block level exploration</p>
 <div class="cell" data-context="setup">
 <div class="cell-output cell-output-stderr">
 <pre><code>── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
@@ -85,15 +86,45 @@ ul.task-list li input[type="checkbox"] {
 ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors</code></pre>
 </div>
 </div>
-<section id="exploring" class="level2">
-<h2 class="anchored" data-anchor-id="exploring">Exploring:</h2>
-<p>This document is analyzing the <strong>mtcars</strong> dataset.</p>
+<section id="current-mesh-block" class="level2">
+<h2 class="anchored" data-anchor-id="current-mesh-block">Current Mesh Block</h2>
+<div class="cell">
+<div class="cell-output-display">
+<div id="mb_display" class="shiny-text-output"></div>
+</div>
+</div>
 <p>
 <script type="application/shiny-prerendered" data-context="server-start">
 library(shiny)
 library(tidyverse)
+</script>
+ 
+<script type="application/shiny-prerendered" data-context="server">
+session <- getDefaultReactiveDomain()
 
+mb_code_reactive <- reactive({
+  query <- parseQueryString(session$clientData$url_search)
+  query$mb_code
+})
 
+observe({
+  mb <- mb_code_reactive()
+  if (!is.null(mb)) {
+    print(paste("Mesh block code:", mb))
+  }
+})
+
+</script>
+ 
+<script type="application/shiny-prerendered" data-context="server">
+output$mb_display <- renderText({
+  mb <- mb_code_reactive()
+  if (is.null(mb)) {
+    "No mesh block specified. Add ?mb_code=YOUR_CODE to the URL"
+  } else {
+    paste("Displaying data for mesh block:", mb)
+  }
+})
 </script>
  
 <script type="application/shiny-prerendered" data-context="server-extras">

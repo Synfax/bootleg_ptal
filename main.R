@@ -13,6 +13,7 @@ library(profvis)
 library(parallel)
 library(doParallel)
 library(osmdata)
+library(qs)
 
 #source files
 source('gtfs_files/calculate_walking_distances.R')

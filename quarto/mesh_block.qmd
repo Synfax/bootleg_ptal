@@ -16,10 +16,42 @@ params:
 #| context: setup
 library(shiny)
 library(tidyverse)
+```
 
+```{r}
+#| context: server
+
+session <- getDefaultReactiveDomain()
+
+mb_code_reactive <- reactive({
+  query <- parseQueryString(session$clientData$url_search)
+  query$mb_code
+})
+
+observe({
+  mb <- mb_code_reactive()
+  if (!is.null(mb)) {
+    print(paste("Mesh block code:", mb))
+  }
+})
 
 ```
 
-## Exploring: `r params$dataset`
+## Current Mesh Block
 
-This document is analyzing the **`r params$mb_code`** dataset.
+```{r}
+textOutput("mb_display")
+```
+
+```{r}
+#| context: server
+
+output$mb_display <- renderText({
+  mb <- mb_code_reactive()
+  if (is.null(mb)) {
+    "No mesh block specified. Add ?mb_code=YOUR_CODE to the URL"
+  } else {
+    paste("Displaying data for mesh block:", mb)
+  }
+})
+```

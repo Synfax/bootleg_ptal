@@ -13,18 +13,19 @@ package_final_sf <- function() {
 
   #summary(final_result_dt[,.(total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)])
 
-  trimmed_results = final_result_dt[,.(mb_code21, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
+  trimmed_results = final_result_dt[,.(mb_code21, mesh_block_list, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
     as.data.frame()
 
-  fwrite(trimmed_results, 'rdata_output/trimmed_results.csv')
+  qs::qsave(trimmed_results, 'qs/trimmed_results.qs')
 
   trimmed_scores <- trimmed_results %>%
+    select(!mesh_block_list) %>%
     mutate(jobs = round(jobs,2)) %>%
     mutate(across(!mb_code21, ~percent_rank(.x))) %>%
     rowwise() %>%
     mutate(total_score = sum(across(!mb_code21)), MB_CODE21 = mb_code21)
 
-  fwrite(trimmed_scores, 'rdata_output/trimmed_scores.csv')
+  qs::qsave(trimmed_scores, 'qs/trimmed_scores.qs')
 
   mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
     filter(GCC_NAME21 == 'Greater Melbourne') %>%
