@@ -16,28 +16,49 @@ params:
 #| context: setup
 library(shiny)
 library(tidyverse)
+library(data.table)
+library(qs)
+
+trimmed_results <- qs::qread('../qs/trimmed_results.qs') %>% 
+  as.data.table() %>% 
+  setkey(mb_code21)
+
+#trimmed_results <- qs::qread('qs/trimmed_results.qs') %>% as.data.table() %>% setkey(mb_code21)
+
 ```
 
 ```{r}
 #| context: server
 
+
+#20457495000
+
 session <- getDefaultReactiveDomain()
 
 mb_code_reactive <- reactive({
   query <- parseQueryString(session$clientData$url_search)
-  query$mb_code
+
+  if (is.null(query$mb_code)) {
+    return(NULL)
+  }
+
+  result <- trimmed_results[as.character(query$mb_code)]
+
+  if (nrow(result) == 0) {
+    return(NULL)
+  }
+
+  result$mesh_block_list[[1]]
 })
 
 observe({
   mb <- mb_code_reactive()
-  if (!is.null(mb)) {
-    print(paste("Mesh block code:", mb))
-  }
+
 })
 
 ```
 
-## Current Mesh Block
+## Mesh block reach map
 
 ```{r}
 textOutput("mb_display")
@@ -51,7 +72,7 @@ output$mb_display <- renderText({
   if (is.null(mb)) {
     "No mesh block specified. Add ?mb_code=YOUR_CODE to the URL"
   } else {
-    paste("Displaying data for mesh block:", mb)
+    paste("Displaying data for mesh block:", length(mb))
   }
 })
 ```
