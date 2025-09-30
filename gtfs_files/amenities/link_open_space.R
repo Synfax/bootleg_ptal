@@ -1,11 +1,6 @@
-link_open_space <- function() {
+link_open_space <- function(mb_sf) {
 
   #load mb sf
-  mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
-    filter(GCC_NAME21 == 'Greater Melbourne') %>%
-    st_transform(7855) %>%
-    select(MB_CODE21, MB_CAT21) %>%
-    mutate(area = st_area(geometry))
 
   #use osmdata to pull open space
   open_space <- opq(bbox = getbb("Melbourne, Victoria, Australia")) %>%
@@ -39,4 +34,6 @@ link_open_space <- function() {
   # mb_sf %>%
   #   filter(MB_CODE21 %in% mb_list) %>%
   #   mapgl::maplibre_view()
+
+  return(open_space_mb_link)
 }

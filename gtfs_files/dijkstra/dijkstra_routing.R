@@ -1,4 +1,4 @@
-dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 46) {
+dijkstra_transit_routing <- function() {
 
   #need some function to return vertex_metadata
 
@@ -202,7 +202,7 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
       #result[, stop_name := stop_id_to_name[stop_id]]
 
 
-      #PTION 1
+      #OPTION 1
       {
         #find which final walking UFIs I can walk to after I get off my last connection
         final_destinations <- result[walking_access_dict, on = 'stop_id', nomatch = NULL, allow.cartesian = T][
@@ -212,9 +212,11 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
         #get the mesh block IDs of all of the UFIs I can walk to
         mesh_blocks = as.character(unique(final_destinations$MB_CODE21))
 
-        employment = sum(mb_employment_dict[mesh_blocks]$jobs, na.rm = T)
+        #employment = sum(mb_employment_dict[mesh_blocks]$jobs, na.rm = T)
 
       }
+
+      total_amenity <- master_amenity_dt[mesh_blocks][, MB_CODE21 := NULL]
 
 
 
@@ -223,7 +225,8 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
 
     #})
 
-    return(data.table(empl = employment))
+    final_values <- total_amenity[, lapply(.SD, sum, na.rm = TRUE)]
+    return(final_values)
   }
 
   # =============================================================================
@@ -275,15 +278,6 @@ dijkstra_transit_routing <- function(place_registry, starting_stops, max_time = 
   end_time <- Sys.time()
 
   message('time elapsed:', (end_time - start_time))
-
-  {
-    all_results %>%
-      as.data.frame() %>%
-      left_join(stops, by = 'stop_id') %>%
-      st_set_geometry('geometry')-> res_sf
-
-    st_write(res_sf, 'sf_output/res_sf.gpkg', append = F)
-  }
 
   return(all_results)
 }

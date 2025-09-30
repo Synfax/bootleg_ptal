@@ -1,11 +1,7 @@
-link_supermarkets <- function() {
+link_supermarkets <- function(mb_sf) {
 
   #load mb sf
-  mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
-    filter(GCC_NAME21 == 'Greater Melbourne') %>%
-    st_transform(7855) %>%
-    select(MB_CODE21, MB_CAT21) %>%
-    mutate(area = st_area(geometry))
+
 
   supermarkets <- opq(bbox = getbb("Melbourne, Victoria, Australia")) %>%
     add_osm_feature(key = "shop",
@@ -66,5 +62,5 @@ link_supermarkets <- function() {
   # mb_list <- link_supermarkets_mb$MB_CODE21
   # mb_sf %>% filter(MB_CODE21 %in% mb_list) %>% mapgl::maplibre_view()
 
-
+  return(link_supermarkets_mb)
 }

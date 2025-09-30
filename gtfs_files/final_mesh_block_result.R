@@ -1,7 +1,5 @@
 final_mb_result <- function() {
 
-
-
   all_res <- copy(all_results)
   all_res[, name := names(vertex_to_index[start_vertex_index]) ]
 
@@ -10,22 +8,35 @@ final_mb_result <- function() {
   starting_index_df[, time := max_time - walking_time]
   starting_index_df[, name := paste0(stop_id, '_', time)]
 
-  final_result <- starting_index_df[all_res, on = c('name'), nomatch = NULL]
+  final_result_dt <- starting_index_df[all_res, on = c('name'), nomatch = NULL]
+  colnames(final_result_dt) <- janitor::make_clean_names(colnames(final_result_dt))
+
+  #summary(final_result_dt[,.(total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)])
+
+  trimmed_results = final_result_dt[,.(mb_code21, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
+    as.data.frame()
+
+  trimmed_scores <- trimmed_results %>%
+    mutate(jobs = round(jobs,2)) %>%
+    mutate(across(!mb_code21, ~percent_rank(.x))) %>%
+    rowwise() %>%
+    mutate(total_score = sum(across(!mb_code21)), MB_CODE21 = mb_code21)
 
   mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
     filter(GCC_NAME21 == 'Greater Melbourne') %>%
     st_transform(7855)
 
-  final_result <- final_result %>%
+  final_result <- trimmed_scores %>%
+    select(!mb_code21) %>%
     left_join(mb_sf, by = 'MB_CODE21')
 
   write_sf(final_result, 'sf_output/final_result.gpkg')
 
 
-  mb_test <- mb_sf %>%
-    filter(MB_CODE21 %in% mesh_blocks)
-
-  write_sf(mb_test, 'sf_output/mb_test.gpkg')
+  # mb_test <- mb_sf %>%
+  #   filter(MB_CODE21 %in% mesh_blocks)
+  #
+  # write_sf(mb_test, 'sf_output/mb_test.gpkg')
 
   #current attempt ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #

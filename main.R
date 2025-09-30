@@ -24,6 +24,8 @@ source('gtfs_files/employment/employment_mb.R')
 source('gtfs_files/link_walk_stops.R')
 source('gtfs_files/mb_centroids_ufi.R')
 source('gtfs_files/find_starting_indices.R')
+source('gtfs_files/create_master_amenity_mb_dict.R')
+source('gtfs_files/dijkstra/dijkstra_routing.R')
 
 #settings - core count and whether to enable parallel processing
   #enable parallel processing (required for sub ~4 hour processing time)
@@ -75,10 +77,6 @@ stops_sf <- stops %>%
   mutate(stop_id = as.character(stop_id)) %>%
   filter(stop_id %in% gtfs_pre_stops)
 
-message('Loading place registry')
-
-
-#TODO: explain what this does
 transit_ufi_dict <- get_transit_ufi_dict()
 walking_distances <- calculate_walking_distances()
 place_registry <<- generate_place_registry(doParallel, num_cores)
@@ -86,9 +84,10 @@ master_mb_ufi <<- get_master_mb_ufi()
 walking_access_dict <<- link_walk_stops()
 mb_employment_dict <<- employment_mb()
 test <<- find_starting_indices()
+master_amenity_dt <<- create_master_amenity_mb_dict()
 
-plan('default')
+all_results <<- dijkstra_transit_routing()
 
 
-message('Place reg loaded')
+
 
