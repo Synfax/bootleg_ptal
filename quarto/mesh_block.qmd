@@ -14,24 +14,52 @@ params:
 
 ```{r}
 #| context: setup
+#| echo: false
 library(shiny)
 library(tidyverse)
 library(data.table)
 library(qs)
+library(sf)
+library(rdeck)
+library(reactable)
+library(reactablefmtr)
+library(sparkline)
 
-trimmed_results <- qs::qread('../qs/trimmed_results.qs') %>% 
-  as.data.table() %>% 
+trimmed_results <- qs::qread('../qs/trimmed_results.qs') %>%
+  as.data.table() %>%
   setkey(mb_code21)
 
+get_random_mb_for_testing <- function() {
+  random_mb <- trimmed_results %>%
+    slice_sample(n=1) %>% pull(mb_code21)
+  cat(random_mb)
+  #20457495000
+}
+
+mb_dt <- qs::qread('../qs/mb_dt.qs')
+amenity_stats <- qs::qread('../qs/amenity_stats.qs')
+#mb_dt <- qs::qread('qs/mb_dt.qs') %>%  setkey(MB_CODE21)
+
 #trimmed_results <- qs::qread('qs/trimmed_results.qs') %>% as.data.table() %>% setkey(mb_code21)
+
+map_accessible_mesh_blocks <- function(mesh_block_list) {
+  
+  mesh_shapefiles <- mb_dt[mesh_block_list] %>% 
+    as.data.frame() %>% 
+    st_set_geometry('geometry')
+  
+  rdeck(initial_bounds = st_bbox(mesh_shapefiles)) %>%
+      add_polygon_layer(
+        data = mesh_shapefiles,
+        get_polygon = geometry,
+        pickable = TRUE
+      )
+}
 
 ```
 
 ```{r}
 #| context: server
-
-
-#20457495000
 
 session <- getDefaultReactiveDomain()
 
@@ -47,13 +75,8 @@ mb_code_reactive <- reactive({
   if (nrow(result) == 0) {
     return(NULL)
   }
-
-  result$mesh_block_list[[1]]
-})
-
-observe({
-  mb <- mb_code_reactive()
-
+  
+  result
 })
 
 ```
@@ -61,18 +84,73 @@ observe({
 ## Mesh block reach map
 
 ```{r}
-textOutput("mb_display")
+textOutput("mb_message")
+rdeckOutput("mb_map")
+
+```
+
+## reachable amenities
+here are the reachable amenities
+```{r}
+reactableOutput("amenity_table")
 ```
 
 ```{r}
 #| context: server
 
-output$mb_display <- renderText({
-  mb <- mb_code_reactive()
-  if (is.null(mb)) {
+output$mb_message <- renderText({
+  mesh_block_object <- mb_code_reactive()
+  if (is.null(mesh_block_object)) {
     "No mesh block specified. Add ?mb_code=YOUR_CODE to the URL"
   } else {
-    paste("Displaying data for mesh block:", length(mb))
+    ""
   }
+})
+
+output$mb_map <- renderRdeck({
+  mesh_block_object <- mb_code_reactive()
+  
+  accessible_mesh_blocks <- unlist(mesh_block_object$mesh_block_list[[1]])
+  
+  if (!is.null(accessible_mesh_blocks)) {
+    map_accessible_mesh_blocks(accessible_mesh_blocks)
+  }
+})
+
+output$amenity_table <- renderReactable({
+  mesh_block_object <- mb_code_reactive()
+
+  if (is.null(mesh_block_object)) {
+    return(NULL)
+  }
+
+  amenity_table <- copy(mesh_block_object)[, c("mesh_block_list", "mb_code21") := NULL]
+
+  # Pivot to long format and join with stats
+  table_data <- amenity_table %>%
+    as.data.frame() %>%
+    pivot_longer(cols = everything(), names_to = "amenity", values_to = 'value') %>%
+    left_join(amenity_stats, by = "amenity")
+
+  reactable(
+    table_data,
+    columns = list(
+      amenity = colDef(name = "Amenity", minWidth = 150),
+      value = colDef(name = "This Mesh Block", width = 120),
+      min = colDef(show = FALSE),
+      q25 = colDef(show = FALSE),
+      median = colDef(show = FALSE),
+      q75 = colDef(show = FALSE),
+      max = colDef(show = FALSE),
+      distribution = colDef(
+        name = "Melbourne Distribution",
+        width = 200,
+        cell = function(value, index) {
+          row <- table_data[index, ]
+          sparkline(c(row$min, row$q25, row$median, row$q75, row$max), type = "box")
+        }
+      )
+    )
+  )
 })
 ```

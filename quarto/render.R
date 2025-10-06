@@ -16,8 +16,26 @@ mb_dt <- mb_sf %>%
   as.data.table() %>%
   setkey(MB_CODE21)
 
+qs::qsave(mb_dt, 'qs/mb_dt.qs')
 
+# Create summary stats for each amenity across all mesh blocks
+amenity_cols_to_exclude <- c("mesh_block_list", "mb_code21")
 
+# Get quantiles for each amenity (for box plots)
+amenity_quantiles <- trimmed_results[, lapply(.SD, quantile, probs = c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE),
+                                      .SDcols = !amenity_cols_to_exclude]
+
+# Convert to long format for easier use in reactable
+amenity_stats <- data.table(
+  amenity = names(amenity_quantiles),
+  min = as.numeric(amenity_quantiles[1, ]),
+  q25 = as.numeric(amenity_quantiles[2, ]),
+  median = as.numeric(amenity_quantiles[3, ]),
+  q75 = as.numeric(amenity_quantiles[4, ]),
+  max = as.numeric(amenity_quantiles[5, ])
+)
+
+qs::qsave(amenity_stats, 'qs/amenity_stats.qs')
 
 #mb_list_test <- trimmed_results[2:5,]$mb_code21 %>%
   #as.character()
