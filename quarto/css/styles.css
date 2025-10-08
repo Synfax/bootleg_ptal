@@ -5,11 +5,111 @@
   font-style: normal;
 }
 
+/* Cool Modern Terminal Theme */
 body {
   font-family: 'Berkeley Mono', monospace;
+  background-color: #191A1A;
+  color: #e5c07b;
 }
 
-/* Optional: Keep monospace specifically for code blocks */
+/* Headers */
+h1, h2, h3, h4, h5, h6 {
+  color: #e5c07b;
+}
+
+/* Links and buttons */
+a {
+  color: #61afef;
+}
+
+a:hover {
+  color: #528bcc;
+}
+
+.btn-primary {
+  background-color: #61afef;
+  border-color: #61afef;
+}
+
+.btn-primary:hover {
+  background-color: #528bcc;
+  border-color: #528bcc;
+}
+
+/* Secondary text */
+.text-muted, .help-block {
+  color: #abb2bf;
+}
+
+/* Sidebar styling - override Quarto theme */
+.sidebar,
+#quarto-sidebar,
+.quarto-sidebar,
+nav#TOC,
+.quarto-sidebar-toggle,
+.margin-sidebar {
+  background-color: #282c34 !important;
+  color: #abb2bf !important;
+}
+
+#quarto-sidebar .sidebar-menu-container {
+  background-color: #282c34 !important;
+}
+
+/* Input controls */
+.form-control {
+  background-color: #282c34;
+  color: #e5c07b;
+  border-color: #3e4451;
+}
+
+.form-control:focus {
+  background-color: #282c34;
+  color: #e5c07b;
+  border-color: #61afef;
+}
+
+/* Slider styling */
+.irs-bar, .irs-from, .irs-to, .irs-single {
+  background-color: #61afef;
+}
+
+.irs-line {
+  background-color: #3e4451;
+}
+
+.irs-grid-text {
+  color: #abb2bf;
+}
+
+/* Code blocks */
 code, pre {
   font-family: 'Berkeley Mono', monospace;
+  background-color: #282c34;
+  color: #abb2bf;
+}
+
+/* rdeck tooltip styling */
+.rdeck-tooltip {
+  font-family: 'Berkeley Mono', monospace;
+  background-color: #282c34 !important;
+  color: #e5c07b !important;
+  border: 1px solid #61afef !important;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 12px;
+}
+
+.rdeck-tooltip table {
+  color: #e5c07b;
+}
+
+.rdeck-tooltip td {
+  color: #abb2bf;
+  padding: 2px 8px;
+}
+
+.rdeck-tooltip tr td:first-child {
+  color: #61afef;
+  font-weight: bold;
 }

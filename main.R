@@ -57,7 +57,7 @@ reset_storage()
 #set gtfs parameters
 gtfs_parameters =  list(
   mode_numbers = 2:4,
-  day = 'tuesday',
+  day = 'wednesday',
   city = 'melbourne'
 )
 

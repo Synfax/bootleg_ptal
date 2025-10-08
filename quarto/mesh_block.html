@@ -46,12 +46,12 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#mesh-block-reach-map" id="toc-mesh-block-reach-map" class="nav-link active" data-scroll-target="#mesh-block-reach-map">Mesh block reach map</a></li>
-  <li><a href="#reachable-amenities" id="toc-reachable-amenities" class="nav-link" data-scroll-target="#reachable-amenities">reachable amenities</a></li>
+  <li><a href="#mesh-block-details" id="toc-mesh-block-details" class="nav-link active" data-scroll-target="#mesh-block-details">Mesh block details</a></li>
+  <li><a href="#mesh-block-reach-map" id="toc-mesh-block-reach-map" class="nav-link" data-scroll-target="#mesh-block-reach-map">Mesh block reach map</a></li>
   </ul>
 </nav>
 </div>
-<main class="content" id="quarto-document-content">
+<main class="content page-columns page-full" id="quarto-document-content">
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
@@ -73,53 +73,17 @@ ul.task-list li input[type="checkbox"] {
 
 
 <p>#Mesh block level exploration</p>
-<div class="cell" data-context="setup">
-<div class="cell-output cell-output-stderr">
-<pre><code>── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
-✔ dplyr     1.1.4     ✔ readr     2.1.5
-✔ forcats   1.0.0     ✔ stringr   1.5.1
-✔ ggplot2   3.5.1     ✔ tibble    3.3.0
-✔ lubridate 1.9.4     ✔ tidyr     1.3.1
-✔ purrr     1.1.0     
-── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
-✖ dplyr::filter() masks stats::filter()
-✖ dplyr::lag()    masks stats::lag()
-ℹ Use the conflicted package (&lt;http://conflicted.r-lib.org/&gt;) to force all conflicts to become errors
-
-Attaching package: 'data.table'
-
-
-The following objects are masked from 'package:lubridate':
-
-    hour, isoweek, mday, minute, month, quarter, second, wday, week,
-    yday, year
-
-
-The following objects are masked from 'package:dplyr':
-
-    between, first, last
-
-
-The following object is masked from 'package:purrr':
-
-    transpose
-
-
-qs 0.27.3. Announcement: https://github.com/qsbase/qs/issues/103
-
-Linking to GEOS 3.12.2, GDAL 3.9.3, PROJ 9.4.1; sf_use_s2() is TRUE
-
-
-Attaching package: 'reactablefmtr'
-
-
-The following object is masked from 'package:ggplot2':
-
-    margin</code></pre>
+<section id="mesh-block-details" class="level2">
+<h2 class="anchored" data-anchor-id="mesh-block-details">Mesh block details</h2>
+<div class="cell">
+<div class="cell-output-display">
+<div class="reactable html-widget html-widget-output shiny-report-size html-fill-item" data-reactable-output="mb_info_table" id="mb_info_table" style="width:auto;height:auto;"></div>
 </div>
 </div>
-<section id="mesh-block-reach-map" class="level2">
+</section>
+<section id="mesh-block-reach-map" class="level2 page-columns page-full">
 <h2 class="anchored" data-anchor-id="mesh-block-reach-map">Mesh block reach map</h2>
+<div class="column-body-outset">
 <div class="cell">
 <div class="cell-output-display">
 <div id="mb_message" class="shiny-text-output"></div>
@@ -128,7 +92,6 @@ The following object is masked from 'package:ggplot2':
 <div class="rdeck html-widget html-widget-output shiny-report-size html-fill-item" id="mb_map" style="width:100%;height:400px;"></div>
 </div>
 </div>
-</section>
 <section id="reachable-amenities" class="level2">
 <h2 class="anchored" data-anchor-id="reachable-amenities">reachable amenities</h2>
 <p>here are the reachable amenities</p>
@@ -136,6 +99,8 @@ The following object is masked from 'package:ggplot2':
 <div class="cell-output-display">
 <div class="reactable html-widget html-widget-output shiny-report-size html-fill-item" data-reactable-output="amenity_table" id="amenity_table" style="width:auto;height:auto;"></div>
 </div>
+</div>
+</section>
 </div>
 <p>
 <script type="application/shiny-prerendered" data-context="server-start">
@@ -147,10 +112,15 @@ library(sf)
 library(rdeck)
 library(reactable)
 library(reactablefmtr)
-library(sparkline)
+
+options(rdeck.mapbox_access_token = Sys.getenv('MAPBOX_ACCESS_TOKEN'))
 
 trimmed_results <- qs::qread('../qs/trimmed_results.qs') %>%
   as.data.table() %>%
+  setkey(mb_code21)
+
+trimmed_scores <- qs::qread('../qs/trimmed_scores.qs') %>% 
+  as.data.table() %>% 
   setkey(mb_code21)
 
 get_random_mb_for_testing <- function() {
@@ -166,18 +136,53 @@ amenity_stats <- qs::qread('../qs/amenity_stats.qs')
 
 #trimmed_results <- qs::qread('qs/trimmed_results.qs') %>% as.data.table() %>% setkey(mb_code21)
 
-map_accessible_mesh_blocks <- function(mesh_block_list) {
-  
-  mesh_shapefiles <- mb_dt[mesh_block_list] %>% 
-    as.data.frame() %>% 
-    st_set_geometry('geometry')
-  
-  rdeck(initial_bounds = st_bbox(mesh_shapefiles)) %>%
+map_accessible_mesh_blocks <- function(mesh_block_list, travel_times) {
+
+  mesh_shapefiles <- mb_dt[mesh_block_list] %>%
+    as.data.frame() %>%
+    st_set_geometry('geometry') %>%
+    mutate(travel_time = travel_times) %>% 
+    st_transform('wgs84')
+
+  bbox <- st_bbox(mesh_shapefiles)
+  bbox_expanded <- bbox + c(-0.0001, -0.0001, 0.0001, 0.0001) * as.vector(bbox)
+
+  rdeck(initial_bounds = bbox_expanded) %>%
       add_polygon_layer(
         data = mesh_shapefiles,
         get_polygon = geometry,
+        get_fill_color = scale_color_quantize(
+          col = travel_time,
+          palette = scales::viridis_pal(direction = -1)
+        ),
         pickable = TRUE
       )
+}
+
+rename_amenities <- function(table) {
+  table %>% 
+    mutate(amenity = case_when(
+      amenity == 'jobs' ~ "Jobs ('000)",
+      amenity == 'total_open_space_area' ~ "Open space (Ha)",
+      amenity == 'n_child_care' ~ "Child care centres",
+      amenity == 'n_hospital' ~ "Hospitals",
+      amenity == 'n_supermarkets' ~ "Supermarkets",
+      amenity == 'n_health_facility' ~ "Health facilities",
+      amenity == 'n_sport_facility' ~ "Sport facilities",
+      amenity == 'n_tertiary_institution' ~ "Tertiary education centres",
+      amenity == 'n_education_centre' ~ "Primary and secondary schools",
+    ))
+}
+
+format_output <- function(table) {
+  table %>% 
+    mutate(number = ifelse(amenity == 'jobs', number/10^3, number)) %>%
+    mutate(median = ifelse(amenity == 'jobs', median/10^3, median)) %>% 
+    mutate(max = ifelse(amenity == 'jobs', max/10^3, max)) %>% 
+    mutate(number = ifelse(amenity == 'total_open_space_area', number/10^6, number)) %>% 
+    mutate(median = ifelse(amenity == 'total_open_space_area', median/10^6, median)) %>% 
+    mutate(max = ifelse(amenity == 'total_open_space_area', max/10^6, max)) %>% 
+    mutate(across(where(is.numeric), ~round(.,2)))
 }
 
 </script>
@@ -215,47 +220,68 @@ output$mb_message <- renderText({
 
 output$mb_map <- renderRdeck({
   mesh_block_object <- mb_code_reactive()
-  
+
   accessible_mesh_blocks <- unlist(mesh_block_object$mesh_block_list[[1]])
-  
+  travel_times <- unlist(mesh_block_object$travel_time[[1]])
+  #fix logic in dijkstra_routing - its currently reversed
+  travel_times = 46 - travel_times
+
   if (!is.null(accessible_mesh_blocks)) {
-    map_accessible_mesh_blocks(accessible_mesh_blocks)
+    map_accessible_mesh_blocks(accessible_mesh_blocks, travel_times)
   }
 })
 
-output$amenity_table <- renderReactable({
+output$mb_info_table <- renderReactable({
+  
   mesh_block_object <- mb_code_reactive()
+  mb_code <- mb_code_reactive()$mb_code21
+  
+  mb_dt[mb_code] %>% 
+    as.data.frame() %>% 
+    st_drop_geometry() %>% 
+    select(MB_CAT21, SA2_NAME21, SA3_NAME21, SA4_NAME21) %>% 
+    pivot_longer(cols = everything(), values_to = 'Value', names_to = 'Key') %>% 
+    reactable()
+  
+})
+
+output$amenity_table <- renderReactable({
+  
+  mesh_block_object <- mb_code_reactive()
+  mb_code <- mb_code_reactive()$mb_code21
 
   if (is.null(mesh_block_object)) {
     return(NULL)
   }
+  
+  scores_table <- trimmed_scores[mb_code][, c("mb_code21", "MB_CODE21"):= NULL] %>% 
+    as.data.frame() %>%
+    pivot_longer(cols = everything(), names_to = "amenity", values_to = 'score')
 
-  amenity_table <- copy(mesh_block_object)[, c("mesh_block_list", "mb_code21") := NULL]
+  amenity_table <- copy(mesh_block_object)[, c("mesh_block_list", "travel_times", "mb_code21") := NULL]
 
   # Pivot to long format and join with stats
   table_data <- amenity_table %>%
     as.data.frame() %>%
-    pivot_longer(cols = everything(), names_to = "amenity", values_to = 'value') %>%
-    left_join(amenity_stats, by = "amenity")
+    pivot_longer(cols = everything(), names_to = "amenity", values_to = 'number') %>% 
+    left_join(scores_table, by = 'amenity') %>% 
+    left_join(amenity_stats, by = 'amenity')
+  
+  table_data = table_data %>% 
+    format_output() %>% 
+    rename_amenities()
 
   reactable(
     table_data,
     columns = list(
       amenity = colDef(name = "Amenity", minWidth = 150),
-      value = colDef(name = "This Mesh Block", width = 120),
-      min = colDef(show = FALSE),
-      q25 = colDef(show = FALSE),
-      median = colDef(show = FALSE),
-      q75 = colDef(show = FALSE),
-      max = colDef(show = FALSE),
-      distribution = colDef(
-        name = "Melbourne Distribution",
-        width = 200,
-        cell = function(value, index) {
-          row <- table_data[index, ]
-          sparkline(c(row$min, row$q25, row$median, row$q75, row$max), type = "box")
-        }
-      )
+      number = colDef(name = "This Mesh Block", width = 120),
+      score = colDef(name = 'score'),
+      min = colDef(show = F),
+      median = colDef(show = T),
+      max = colDef(show = T),
+      q25 = colDef(show = F),
+      q75 = colDef(show = F)
     )
   )
 })
@@ -290,12 +316,12 @@ ojs_define <- function(..., .session = shiny::getDefaultReactiveDomain()) {
 </p>
 <!--html_preserve-->
 <script type="application/shiny-prerendered" data-context="dependencies">
-{"type":"list","attributes":{},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmltools-fill"]},{"type":"character","attributes":{},"value":["0.5.8.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["fill"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["fill.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmltools"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.8.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"character","attributes":{},"value":["1.6.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["1.6.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["rdeck"]},{"type":"character","attributes":{},"value":["0.5.2"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["rdeck.bundle.js"]},{"type":"character","attributes":{},"value":["rdeck.bundle.css","fonts.bundle.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["rdeck"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.2.9000"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["core-js"]},{"type":"character","attributes":{},"value":["2.5.3"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/core-js"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["shim.min.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["react"]},{"type":"character","attributes":{},"value":["18.2.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/react"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["react.min.js","react-dom.min.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactwidget"]},{"type":"character","attributes":{},"value":["2.0.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/react-tools"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["react-tools.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmltools-fill"]},{"type":"character","attributes":{},"value":["0.5.8.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["fill"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["fill.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmltools"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.8.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"character","attributes":{},"value":["1.6.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["1.6.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactable"]},{"type":"character","attributes":{},"value":["0.4.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.4.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactable-binding"]},{"type":"character","attributes":{},"value":["0.4.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable"]},{"type":"logical","attributes":{},"value":[false]},{"type":"character","attributes":{},"value":["0.4.4"]}]}]}
+{"type":"list","attributes":{},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["core-js"]},{"type":"character","attributes":{},"value":["2.5.3"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/core-js"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["shim.min.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["react"]},{"type":"character","attributes":{},"value":["18.2.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/react"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["react.min.js","react-dom.min.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactwidget"]},{"type":"character","attributes":{},"value":["2.0.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/react-tools"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["react-tools.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmltools-fill"]},{"type":"character","attributes":{},"value":["0.5.8.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["fill"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["fill.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmltools"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.8.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"character","attributes":{},"value":["1.6.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["1.6.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactable"]},{"type":"character","attributes":{},"value":["0.4.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.4.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactable-binding"]},{"type":"character","attributes":{},"value":["0.4.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable"]},{"type":"logical","attributes":{},"value":[false]},{"type":"character","attributes":{},"value":["0.4.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmltools-fill"]},{"type":"character","attributes":{},"value":["0.5.8.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["fill"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["fill.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmltools"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.8.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"character","attributes":{},"value":["1.6.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["1.6.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["rdeck"]},{"type":"character","attributes":{},"value":["0.5.2"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["rdeck.bundle.js"]},{"type":"character","attributes":{},"value":["rdeck.bundle.css","fonts.bundle.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["rdeck"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.2.9000"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["core-js"]},{"type":"character","attributes":{},"value":["2.5.3"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/core-js"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["shim.min.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["react"]},{"type":"character","attributes":{},"value":["18.2.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/react"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["react.min.js","react-dom.min.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactwidget"]},{"type":"character","attributes":{},"value":["2.0.0"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www/react-tools"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["react-tools.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactR"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.6.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmltools-fill"]},{"type":"character","attributes":{},"value":["0.5.8.1"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["fill"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["fill.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmltools"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.5.8.1"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"character","attributes":{},"value":["1.6.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["www"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["htmlwidgets"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["1.6.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactable"]},{"type":"character","attributes":{},"value":["0.4.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable.css"]},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable"]},{"type":"logical","attributes":{},"value":[true]},{"type":"character","attributes":{},"value":["0.4.4"]}]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["name","version","src","meta","script","stylesheet","head","attachment","package","all_files","pkgVersion"]},"class":{"type":"character","attributes":{},"value":["html_dependency"]}},"value":[{"type":"character","attributes":{},"value":["reactable-binding"]},{"type":"character","attributes":{},"value":["0.4.4"]},{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["file"]}},"value":[{"type":"character","attributes":{},"value":["htmlwidgets"]}]},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable.js"]},{"type":"NULL"},{"type":"NULL"},{"type":"NULL"},{"type":"character","attributes":{},"value":["reactable"]},{"type":"logical","attributes":{},"value":[false]},{"type":"character","attributes":{},"value":["0.4.4"]}]}]}
 </script>
 <!--/html_preserve-->
 <!--html_preserve-->
 <script type="application/shiny-prerendered" data-context="execution_dependencies">
-{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages"]}},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages","version"]},"class":{"type":"character","attributes":{},"value":["data.frame"]},"row.names":{"type":"integer","attributes":{},"value":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78]}},"value":[{"type":"character","attributes":{},"value":["base","class","classInt","cli","compiler","data.table","datasets","DBI","digest","dplyr","e1071","evaluate","farver","fastmap","forcats","generics","ggplot2","glue","graphics","grDevices","grid","gtable","hms","htmltools","htmlwidgets","httpuv","jsonlite","KernSmooth","knitr","later","lifecycle","lubridate","magrittr","methods","mime","pillar","pkgconfig","promises","proxy","purrr","qs","R6","RApiSerialize","RColorBrewer","Rcpp","RcppParallel","rdeck","reactable","reactablefmtr","reactR","readr","rlang","rmarkdown","rstudioapi","sass","scales","sf","shiny","sparkline","stats","stringfish","stringi","stringr","stylebox","tibble","tidyr","tidyselect","tidyverse","timechange","tools","tzdb","units","utils","vctrs","withr","xfun","xtable","yaml"]},{"type":"character","attributes":{},"value":["4.4.3","7.3-23","0.4-11","3.6.5","4.4.3","1.17.0","4.4.3","1.2.3","0.6.37","1.1.4","1.7-16","1.0.5","2.1.2","1.2.0","1.0.0","0.1.4","3.5.1","1.8.0","4.4.3","4.4.3","4.4.3","0.3.6","1.1.3","0.5.8.1","1.6.4","1.6.16","2.0.0","2.23-26","1.50","1.4.2","1.0.4","1.9.4","2.0.4","4.4.3","0.13","1.11.0","2.0.3","1.3.3","0.4-27","1.1.0","0.27.3","2.6.1","0.1.4","1.1-3","1.1.0","5.1.11-1","0.5.2.9000","0.4.4","2.0.0","0.6.1","2.1.5","1.1.6","2.29","0.17.1","0.4.10","1.4.0","1.0-21","1.10.0","2.0","4.4.3","0.17.0","1.8.4","1.5.1","0.4.0","3.3.0","1.3.1","1.2.1","2.0.0","0.3.0","4.4.3","0.5.0","0.8-7","4.4.3","0.6.5","3.0.2","0.53","1.8-4","2.3.10"]}]}]}
+{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages"]}},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages","version"]},"class":{"type":"character","attributes":{},"value":["data.frame"]},"row.names":{"type":"integer","attributes":{},"value":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77]}},"value":[{"type":"character","attributes":{},"value":["base","class","classInt","cli","compiler","data.table","datasets","DBI","digest","dplyr","e1071","evaluate","farver","fastmap","forcats","generics","ggplot2","glue","graphics","grDevices","grid","gtable","hms","htmltools","htmlwidgets","httpuv","jsonlite","KernSmooth","knitr","later","lifecycle","lubridate","magrittr","methods","mime","pillar","pkgconfig","promises","proxy","purrr","qs","R6","RApiSerialize","RColorBrewer","Rcpp","RcppParallel","rdeck","reactable","reactablefmtr","reactR","readr","rlang","rmarkdown","rstudioapi","sass","scales","sf","shiny","stats","stringfish","stringi","stringr","stylebox","tibble","tidyr","tidyselect","tidyverse","timechange","tools","tzdb","units","utils","vctrs","withr","xfun","xtable","yaml"]},{"type":"character","attributes":{},"value":["4.4.3","7.3-23","0.4-11","3.6.5","4.4.3","1.17.0","4.4.3","1.2.3","0.6.37","1.1.4","1.7-16","1.0.5","2.1.2","1.2.0","1.0.0","0.1.4","3.5.1","1.8.0","4.4.3","4.4.3","4.4.3","0.3.6","1.1.3","0.5.8.1","1.6.4","1.6.16","2.0.0","2.23-26","1.50","1.4.2","1.0.4","1.9.4","2.0.4","4.4.3","0.13","1.11.0","2.0.3","1.3.3","0.4-27","1.1.0","0.27.3","2.6.1","0.1.4","1.1-3","1.1.0","5.1.11-1","0.5.2.9000","0.4.4","2.0.0","0.6.1","2.1.5","1.1.6","2.29","0.17.1","0.4.10","1.4.0","1.0-21","1.10.0","4.4.3","0.17.0","1.8.4","1.5.1","0.4.0","3.3.0","1.3.1","1.2.1","2.0.0","0.3.0","4.4.3","0.5.0","0.8-7","4.4.3","0.6.5","3.0.2","0.53","1.8-4","2.3.10"]}]}]}
 </script>
 <!--/html_preserve-->
 </section>

@@ -43,6 +43,7 @@ generate_place_registry <- function(doParallel, num_cores) {
       stops_to_transfer_to[, c('stop_id', 'UFI','stop_name', 'start_UFI') := NULL]
 
       #ths shouldn't happen but temp
+      #TODO: replace with faster approach: stops_to_transfer_to[order(walking_time), .SD[1], by = destination_stop_id]
       stops_to_transfer_to <- stops_to_transfer_to[, .SD[which.min(walking_time)], by = destination_stop_id]
       stops_to_transfer_to[, time_left_after_walking := 46 -
                              walking_time]
@@ -66,6 +67,7 @@ generate_place_registry <- function(doParallel, num_cores) {
 
       #what it's doing: For each trip, it's finding the first/earliest stop where you can board (the stop with the most time remaining until the time limit).
       #changed to time_left_after_walking (to stop people walking to Anstey from Brunswick (which takes 8m and messes up time_margin))
+      #TODO: replace with faster approach: departures_from_transfer_stops[order(-time_left_after_walking), .SD[1], by = trip_id]
       departures_from_transfer_stops <- departures_from_transfer_stops[, .SD[which.max(time_left_after_walking)], by = trip_id]
 
       #dont need to recalculate min stop sequences, its literally already present in stop_to_departures

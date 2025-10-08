@@ -211,14 +211,23 @@ dijkstra_transit_routing <- function() {
           walking_time <= time_remaining  # Filter to walkable destinations
         ]
 
+        final_destinations[, time_remaining_incl_walking := time_remaining - walking_time]
+
+        #final_destinations[,.(time_remaining,MB_CODE21)][, .SD[which.min(time_remaining)], by = MB_CODE21]
+
+        final_dt <- final_destinations[,.(time_remaining_incl_walking,MB_CODE21)][order(-time_remaining_incl_walking), .SD[1], by = MB_CODE21]
+
+
         #get the mesh block IDs of all of the UFIs I can walk to
-        mesh_blocks = as.character(unique(final_destinations$MB_CODE21))
+        mesh_blocks = as.character(final_dt$MB_CODE21)
+        travel_times = final_dt$time_remaining_incl_walking
 
         #employment = sum(mb_employment_dict[mesh_blocks]$jobs, na.rm = T)
 
       }
 
       total_amenity <- master_amenity_dt[mesh_blocks][, MB_CODE21 := NULL]
+
 
 
 
@@ -229,6 +238,7 @@ dijkstra_transit_routing <- function() {
 
     final_values <- total_amenity[, lapply(.SD, sum, na.rm = TRUE)]
     final_values[, mesh_block_list := list(mesh_blocks)]
+    final_values[, travel_times := list(travel_times)]
     return(final_values)
   }
 

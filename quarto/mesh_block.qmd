@@ -15,6 +15,8 @@ params:
 ```{r}
 #| context: setup
 #| echo: false
+#| output: false
+
 library(shiny)
 library(tidyverse)
 library(data.table)
@@ -23,10 +25,15 @@ library(sf)
 library(rdeck)
 library(reactable)
 library(reactablefmtr)
-library(sparkline)
+
+options(rdeck.mapbox_access_token = Sys.getenv('MAPBOX_ACCESS_TOKEN'))
 
 trimmed_results <- qs::qread('../qs/trimmed_results.qs') %>%
   as.data.table() %>%
+  setkey(mb_code21)
+
+trimmed_scores <- qs::qread('../qs/trimmed_scores.qs') %>% 
+  as.data.table() %>% 
   setkey(mb_code21)
 
 get_random_mb_for_testing <- function() {
@@ -42,18 +49,53 @@ amenity_stats <- qs::qread('../qs/amenity_stats.qs')
 
 #trimmed_results <- qs::qread('qs/trimmed_results.qs') %>% as.data.table() %>% setkey(mb_code21)
 
-map_accessible_mesh_blocks <- function(mesh_block_list) {
-  
-  mesh_shapefiles <- mb_dt[mesh_block_list] %>% 
-    as.data.frame() %>% 
-    st_set_geometry('geometry')
-  
-  rdeck(initial_bounds = st_bbox(mesh_shapefiles)) %>%
+map_accessible_mesh_blocks <- function(mesh_block_list, travel_times) {
+
+  mesh_shapefiles <- mb_dt[mesh_block_list] %>%
+    as.data.frame() %>%
+    st_set_geometry('geometry') %>%
+    mutate(travel_time = travel_times) %>% 
+    st_transform('wgs84')
+
+  bbox <- st_bbox(mesh_shapefiles)
+  bbox_expanded <- bbox + c(-0.0001, -0.0001, 0.0001, 0.0001) * as.vector(bbox)
+
+  rdeck(initial_bounds = bbox_expanded) %>%
       add_polygon_layer(
         data = mesh_shapefiles,
         get_polygon = geometry,
+        get_fill_color = scale_color_quantize(
+          col = travel_time,
+          palette = scales::viridis_pal(direction = -1)
+        ),
         pickable = TRUE
       )
+}
+
+rename_amenities <- function(table) {
+  table %>% 
+    mutate(amenity = case_when(
+      amenity == 'jobs' ~ "Jobs ('000)",
+      amenity == 'total_open_space_area' ~ "Open space (Ha)",
+      amenity == 'n_child_care' ~ "Child care centres",
+      amenity == 'n_hospital' ~ "Hospitals",
+      amenity == 'n_supermarkets' ~ "Supermarkets",
+      amenity == 'n_health_facility' ~ "Health facilities",
+      amenity == 'n_sport_facility' ~ "Sport facilities",
+      amenity == 'n_tertiary_institution' ~ "Tertiary education centres",
+      amenity == 'n_education_centre' ~ "Primary and secondary schools",
+    ))
+}
+
+format_output <- function(table) {
+  table %>% 
+    mutate(number = ifelse(amenity == 'jobs', number/10^3, number)) %>%
+    mutate(median = ifelse(amenity == 'jobs', median/10^3, median)) %>% 
+    mutate(max = ifelse(amenity == 'jobs', max/10^3, max)) %>% 
+    mutate(number = ifelse(amenity == 'total_open_space_area', number/10^6, number)) %>% 
+    mutate(median = ifelse(amenity == 'total_open_space_area', median/10^6, median)) %>% 
+    mutate(max = ifelse(amenity == 'total_open_space_area', max/10^6, max)) %>% 
+    mutate(across(where(is.numeric), ~round(.,2)))
 }
 
 ```
@@ -81,20 +123,31 @@ mb_code_reactive <- reactive({
 
 ```
 
-## Mesh block reach map
+## Mesh block details
 
 ```{r}
+
+reactableOutput('mb_info_table')
+
+```
+
+## Mesh block reach map
+:::{.column-body-outset}
+```{r}
+
 textOutput("mb_message")
 rdeckOutput("mb_map")
 
 ```
 
 ## reachable amenities
+
 here are the reachable amenities
 ```{r}
+
 reactableOutput("amenity_table")
 ```
-
+:::
 ```{r}
 #| context: server
 
@@ -109,47 +162,68 @@ output$mb_message <- renderText({
 
 output$mb_map <- renderRdeck({
   mesh_block_object <- mb_code_reactive()
-  
+
   accessible_mesh_blocks <- unlist(mesh_block_object$mesh_block_list[[1]])
-  
+  travel_times <- unlist(mesh_block_object$travel_time[[1]])
+  #fix logic in dijkstra_routing - its currently reversed
+  travel_times = 46 - travel_times
+
   if (!is.null(accessible_mesh_blocks)) {
-    map_accessible_mesh_blocks(accessible_mesh_blocks)
+    map_accessible_mesh_blocks(accessible_mesh_blocks, travel_times)
   }
 })
 
-output$amenity_table <- renderReactable({
+output$mb_info_table <- renderReactable({
+  
   mesh_block_object <- mb_code_reactive()
+  mb_code <- mb_code_reactive()$mb_code21
+  
+  mb_dt[mb_code] %>% 
+    as.data.frame() %>% 
+    st_drop_geometry() %>% 
+    select(MB_CAT21, SA2_NAME21, SA3_NAME21, SA4_NAME21) %>% 
+    pivot_longer(cols = everything(), values_to = 'Value', names_to = 'Key') %>% 
+    reactable()
+  
+})
+
+output$amenity_table <- renderReactable({
+  
+  mesh_block_object <- mb_code_reactive()
+  mb_code <- mb_code_reactive()$mb_code21
 
   if (is.null(mesh_block_object)) {
     return(NULL)
   }
+  
+  scores_table <- trimmed_scores[mb_code][, c("mb_code21", "MB_CODE21"):= NULL] %>% 
+    as.data.frame() %>%
+    pivot_longer(cols = everything(), names_to = "amenity", values_to = 'score')
 
-  amenity_table <- copy(mesh_block_object)[, c("mesh_block_list", "mb_code21") := NULL]
+  amenity_table <- copy(mesh_block_object)[, c("mesh_block_list", "travel_times", "mb_code21") := NULL]
 
   # Pivot to long format and join with stats
   table_data <- amenity_table %>%
     as.data.frame() %>%
-    pivot_longer(cols = everything(), names_to = "amenity", values_to = 'value') %>%
-    left_join(amenity_stats, by = "amenity")
+    pivot_longer(cols = everything(), names_to = "amenity", values_to = 'number') %>% 
+    left_join(scores_table, by = 'amenity') %>% 
+    left_join(amenity_stats, by = 'amenity')
+  
+  table_data = table_data %>% 
+    format_output() %>% 
+    rename_amenities()
 
   reactable(
     table_data,
     columns = list(
       amenity = colDef(name = "Amenity", minWidth = 150),
-      value = colDef(name = "This Mesh Block", width = 120),
-      min = colDef(show = FALSE),
-      q25 = colDef(show = FALSE),
-      median = colDef(show = FALSE),
-      q75 = colDef(show = FALSE),
-      max = colDef(show = FALSE),
-      distribution = colDef(
-        name = "Melbourne Distribution",
-        width = 200,
-        cell = function(value, index) {
-          row <- table_data[index, ]
-          sparkline(c(row$min, row$q25, row$median, row$q75, row$max), type = "box")
-        }
-      )
+      number = colDef(name = "This Mesh Block", width = 120),
+      score = colDef(name = 'score'),
+      min = colDef(show = F),
+      median = colDef(show = T),
+      max = colDef(show = T),
+      q25 = colDef(show = F),
+      q75 = colDef(show = F)
     )
   )
 })

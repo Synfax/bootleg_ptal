@@ -13,13 +13,13 @@ package_final_sf <- function() {
 
   #summary(final_result_dt[,.(total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)])
 
-  trimmed_results = final_result_dt[,.(mb_code21, mesh_block_list, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
+  trimmed_results = final_result_dt[,.(mb_code21, mesh_block_list,travel_times, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
     as.data.frame()
 
   qs::qsave(trimmed_results, 'qs/trimmed_results.qs')
 
   trimmed_scores <- trimmed_results %>%
-    select(!mesh_block_list) %>%
+    select(!c(mesh_block_list, travel_times)) %>%
     mutate(jobs = round(jobs,2)) %>%
     mutate(across(!mb_code21, ~percent_rank(.x))) %>%
     rowwise() %>%

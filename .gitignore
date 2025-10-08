@@ -25,3 +25,5 @@ quarto/main_files/
 quarto/font
 quarto/mesh_block_files/
 qs/
+.Renviron
+

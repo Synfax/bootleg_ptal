@@ -2,7 +2,6 @@
 title: "Untit1led"
 format:
   html:
-    theme: zephyr
     toc: true
     css: css/styles.css
 server: shiny
@@ -14,6 +13,7 @@ server: shiny
 #| context: setup
 #| include: false
 
+library(tidyverse)
 library(shiny)
 library(sf)
 library(rdeck)
@@ -22,52 +22,133 @@ library(rdeck)
 addResourcePath("font", "font")
 
 mesh_block_sf <- read_sf('sf_input/final_result.gpkg') %>%
-  st_transform('wgs84')
+  st_transform('wgs84') %>% 
+  select(1:10)
+
+trimmed_scores <- qs::qread('../qs/trimmed_scores.qs') %>% 
+  as.data.frame()
+
+source('default_weights.R')
+
+reweight_scores <- function(weights_df) {
+  # TODO: Could make this more concise with reduce2():
+  # total_score = reduce2(weights_df$amenity, weights_df$weight, ~..1 + .data[[..2]] * ..3, .init = 0)
+
+  mesh_block_sf %>%
+    mutate(
+      total_score = jobs * weights_df$weight[weights_df$amenity == 'jobs'] +
+        total_open_space_area * weights_df$weight[weights_df$amenity == 'total_open_space_area'] +
+        n_supermarkets * weights_df$weight[weights_df$amenity == 'n_supermarkets'] +
+        n_sport_facility * weights_df$weight[weights_df$amenity == 'n_sport_facility'] +
+        n_education_centre * weights_df$weight[weights_df$amenity == 'n_education_centre'] +
+        n_child_care * weights_df$weight[weights_df$amenity == 'n_child_care'] +
+        n_tertiary_institution * weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] +
+        n_hospital * weights_df$weight[weights_df$amenity == 'n_hospital'] +
+        n_health_facility * weights_df$weight[weights_df$amenity == 'n_health_facility']
+    )
+}
 
 
-```
-
-```{r}
-#| panel: sidebar
-actionButton("toggle_layer", "Toggle: Total Score / Jobs", class = "btn-primary")
 ```
 
 :::{.column-page}
+::: {.grid}
+::: {.g-col-9}
 ```{r}
-rdeckOutput("map", width = "100%", height = "500px")
+rdeckOutput("map", width = "100%", height = "600px")
 ```
+:::
+
+::: {.g-col-3}
+```{r}
+h4("Amenity Weights")
+
+sliderInput("weight_jobs", "Jobs", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'jobs'], step = 0.1)
+sliderInput("weight_open_space", "Open Space", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'total_open_space_area'], step = 0.1)
+sliderInput("weight_supermarkets", "Supermarkets", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_supermarkets'], step = 0.1)
+sliderInput("weight_sport", "Sport Facilities", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_sport_facility'], step = 0.1)
+sliderInput("weight_education", "Education", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_education_centre'], step = 0.1)
+sliderInput("weight_childcare", "Child Care", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_child_care'], step = 0.1)
+sliderInput("weight_tertiary", "Tertiary", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_tertiary_institution'], step = 0.1)
+sliderInput("weight_hospital", "Hospital", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_hospital'], step = 0.1)
+sliderInput("weight_health", "Health Facilities", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_health_facility'], step = 0.1)
+```
+:::
+:::
 :::
 
 ```{r}
 #| context: server
-output$map <- renderRdeck({
 
-   # React to button press
-  layer_type <- input$toggle_layer %% 2
-
-  base_map <- rdeck(initial_bounds = st_bbox(mesh_block_sf))
-
-
-  if (layer_type == 0) {
-    # Show total_score
-    base_map %>%
-      add_polygon_layer(
-        data = mesh_block_sf,
-        get_polygon = geom,
-        get_fill_color = scale_color_quantile(total_score, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
-        pickable = TRUE
-      )
-  } else {
-    # Show jobs
-    base_map %>%
-      add_polygon_layer(
-        data = mesh_block_sf,
-        get_polygon = geom,
-        get_fill_color = scale_color_quantile(jobs, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
-        pickable = TRUE
-      )
-  }
-
-
+# Reactive weights data frame
+current_weights <- reactive({
+  tribble(
+    ~amenity, ~weight,
+    'jobs', input$weight_jobs,
+    'total_open_space_area', input$weight_open_space,
+    'n_supermarkets', input$weight_supermarkets,
+    'n_sport_facility', input$weight_sport,
+    'n_education_centre', input$weight_education,
+    'n_child_care', input$weight_childcare,
+    'n_tertiary_institution', input$weight_tertiary,
+    'n_hospital', input$weight_hospital,
+    'n_health_facility', input$weight_health
+  )
 })
+
+# Reactive reweighted mesh block data
+reweighted_data <- reactive({
+  reweight_scores(current_weights())
+})
+
+output$map <- renderRdeck({
+  # Initial render with default weights - use isolate to avoid reactivity
+  initial_data <- isolate(reweight_scores(default_weights))
+
+  rdeck(initial_bounds = st_bbox(mesh_block_sf)) %>%
+    add_polygon_layer(
+      id = "mesh_blocks",
+      data = initial_data,
+      get_polygon = geom,
+      get_fill_color = scale_color_quantile(total_score, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+      get_line_color = "#00000000",
+      opacity = 0.5,
+      pickable = TRUE,
+      tooltip = c(
+        jobs,
+        total_open_space_area,
+        n_supermarkets,
+        n_sport_facility,
+        n_education_centre,
+        n_child_care,
+        n_tertiary_institution,
+        n_hospital,
+        n_health_facility
+      )
+    )
+})
+
+observeEvent(current_weights(), {
+  rdeck_proxy("map") %>%
+    add_polygon_layer(
+      id = "mesh_blocks",
+      data = reweighted_data(),
+      get_polygon = geom,
+      get_fill_color = scale_color_quantile(total_score, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+      get_line_color = "#00000000",
+      opacity = 0.5,
+      pickable = TRUE,
+      tooltip = c(
+        jobs,
+        total_open_space_area,
+        n_supermarkets,
+        n_sport_facility,
+        n_education_centre,
+        n_child_care,
+        n_tertiary_institution,
+        n_hospital,
+        n_health_facility
+      )
+    )
+}, ignoreInit = TRUE)
 ```
