@@ -1,5 +1,5 @@
 ---
-title: "Untit1led"
+title: ""
 format:
   html:
     theme: zephyr
@@ -34,26 +34,86 @@ lga_information <- qs::qread('../qs/mb_lga_info.qs')
 
 source('default_weights.R')
 
-reweight_scores <- function(weights_df) {
+normalize_column <- function(x, method = "percentile") {
+  switch(method,
+    "percentile" = percent_rank(x),
+    "log" = {
+      # Add small constant to handle zeros, then log transform and normalize
+      x_shifted <- x + 1
+      x_log <- log(x_shifted)
+      (x_log - min(x_log, na.rm = TRUE)) / (max(x_log, na.rm = TRUE) - min(x_log, na.rm = TRUE))
+    },
+    "sigmoid" = {
+      # Normalize first, then apply sigmoid centered at median
+      x_norm <- (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+      1 / (1 + exp(-x_norm))
+    },
+    x  # fallback
+  )
+}
+
+reweight_scores <- function(weights_df, scoring_method = "percentile") {
   # TODO: Could make this more concise with reduce2():
   # total_score = reduce2(weights_df$amenity, weights_df$weight, ~..1 + .data[[..2]] * ..3, .init = 0)
 
-  mesh_block_sf %>%
-    mutate(
-      total_score = jobs * weights_df$weight[weights_df$amenity == 'jobs'] +
-        total_open_space_area * weights_df$weight[weights_df$amenity == 'total_open_space_area'] +
-        n_supermarkets * weights_df$weight[weights_df$amenity == 'n_supermarkets'] +
-        n_sport_facility * weights_df$weight[weights_df$amenity == 'n_sport_facility'] +
-        n_education_centre * weights_df$weight[weights_df$amenity == 'n_education_centre'] +
-        n_child_care * weights_df$weight[weights_df$amenity == 'n_child_care'] +
-        n_tertiary_institution * weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] +
-        n_hospital * weights_df$weight[weights_df$amenity == 'n_hospital'] +
-        n_health_facility * weights_df$weight[weights_df$amenity == 'n_health_facility']
-    )
+  if (scoring_method == "multiply") {
+    # Multiply percentiles - penalizes having any low scores
+    mesh_block_sf %>%
+      mutate(
+        # Use percentile rank for multiplication
+        jobs_norm = percent_rank(jobs) + 0.01,  # Add small constant to avoid zeros
+        open_space_norm = percent_rank(total_open_space_area) + 0.01,
+        supermarkets_norm = percent_rank(n_supermarkets) + 0.01,
+        sport_norm = percent_rank(n_sport_facility) + 0.01,
+        education_norm = percent_rank(n_education_centre) + 0.01,
+        childcare_norm = percent_rank(n_child_care) + 0.01,
+        tertiary_norm = percent_rank(n_tertiary_institution) + 0.01,
+        hospital_norm = percent_rank(n_hospital) + 0.01,
+        health_norm = percent_rank(n_health_facility) + 0.01,
+        # Multiply weighted scores (only include non-zero weights)
+        total_score =
+          (if(weights_df$weight[weights_df$amenity == 'jobs'] > 0) jobs_norm^weights_df$weight[weights_df$amenity == 'jobs'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'total_open_space_area'] > 0) open_space_norm^weights_df$weight[weights_df$amenity == 'total_open_space_area'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_supermarkets'] > 0) supermarkets_norm^weights_df$weight[weights_df$amenity == 'n_supermarkets'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_sport_facility'] > 0) sport_norm^weights_df$weight[weights_df$amenity == 'n_sport_facility'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_education_centre'] > 0) education_norm^weights_df$weight[weights_df$amenity == 'n_education_centre'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_child_care'] > 0) childcare_norm^weights_df$weight[weights_df$amenity == 'n_child_care'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] > 0) tertiary_norm^weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_hospital'] > 0) hospital_norm^weights_df$weight[weights_df$amenity == 'n_hospital'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_health_facility'] > 0) health_norm^weights_df$weight[weights_df$amenity == 'n_health_facility'] else 1)
+      ) %>%
+      select(-ends_with("_norm"))
+  } else {
+    # Standard additive approach with various normalizations
+    mesh_block_sf %>%
+      mutate(
+        # Normalize each amenity first
+        jobs_norm = normalize_column(jobs, scoring_method),
+        open_space_norm = normalize_column(total_open_space_area, scoring_method),
+        supermarkets_norm = normalize_column(n_supermarkets, scoring_method),
+        sport_norm = normalize_column(n_sport_facility, scoring_method),
+        education_norm = normalize_column(n_education_centre, scoring_method),
+        childcare_norm = normalize_column(n_child_care, scoring_method),
+        tertiary_norm = normalize_column(n_tertiary_institution, scoring_method),
+        hospital_norm = normalize_column(n_hospital, scoring_method),
+        health_norm = normalize_column(n_health_facility, scoring_method),
+        # Then weight and sum
+        total_score = jobs_norm * weights_df$weight[weights_df$amenity == 'jobs'] +
+          open_space_norm * weights_df$weight[weights_df$amenity == 'total_open_space_area'] +
+          supermarkets_norm * weights_df$weight[weights_df$amenity == 'n_supermarkets'] +
+          sport_norm * weights_df$weight[weights_df$amenity == 'n_sport_facility'] +
+          education_norm * weights_df$weight[weights_df$amenity == 'n_education_centre'] +
+          childcare_norm * weights_df$weight[weights_df$amenity == 'n_child_care'] +
+          tertiary_norm * weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] +
+          hospital_norm * weights_df$weight[weights_df$amenity == 'n_hospital'] +
+          health_norm * weights_df$weight[weights_df$amenity == 'n_health_facility']
+      ) %>%
+      select(-ends_with("_norm"))  # Clean up intermediate columns
+  }
 }
 
 convert_zones_to_short <- function(df) {
-
+#Thank you to Jonathan Nolan for this code as part of his work on the Melbourne Property Map
   df %>% mutate(zone_short =  str_replace(ZONE_CODE, "[0-9]+$", ""),
                           zone_short = case_when(
                             #lga == "MELBOURNE" & zone_code %in% c("SUZ6","SUZ7") ~ "Mixed use", #Special use zone are a rare zone that usually don't permit any development, although occasionally they're placed on resi sites. These few are for Arden
@@ -179,15 +239,62 @@ sliderInput("weight_health", "Health Facilities", min = 0, max = 2, value = defa
 ```
 :::
 
-## Accessibility Map
+# Where in Melbourne has the best access to services?
+
+The sliders on the sidebar control the weights of which services are important to you. Adjust the sliders to see which areas in Melbourne have the best access to the services you care about. 
 
 ```{r}
 rdeckOutput("map", width = "100%", height = "600px")
 ```
 
-## Zone analysis
+## Scoring Method
 
-The chart below analyses the zone composition of the top N Mesh Blocks by score with the current weights
+Different normalization methods emphasize different aspects of the distribution:
+
+```{r}
+radioButtons(
+  "scoring_method",
+  "Choose scoring method:",
+  choices = c(
+    "Percentile Rank (default)" = "percentile",
+    "Log Transform" = "log",
+    "Sigmoid (S-curve)" = "sigmoid",
+    "Balanced (multiply percentiles)" = "multiply"
+  ),
+  selected = "percentile"
+)
+```
+
+**Percentile Rank**: Ranks areas 0-1 based on position in distribution. Linear relationship.
+
+**Log Transform**: Compresses high values, spreads out low values. Reduces impact of outliers.
+
+**Sigmoid**: S-curve emphasizing middle differences, compressing extremes. Smooth transitions.
+
+**Balanced**: Multiplies percentiles instead of adding. Heavily penalizes having any low scores - rewards well-rounded accessibility.
+
+::: {.callout-note collapse="true"}
+## How do weights work with each scoring method?
+
+**Additive methods** (Percentile, Log, Sigmoid):
+- Weights act as **multipliers**: `score = (jobs × weight) + (open_space × weight) + ...`
+- Weight of 2 = count this amenity twice as much
+- Weight of 0 = ignore this amenity completely
+- Total score is a weighted sum
+
+**Multiplicative method** (Balanced):
+- Weights act as **exponents**: `score = (jobs ^ weight) × (open_space ^ weight) × ...`
+- Weight of 2 = square the normalized value (much more dramatic effect)
+- Weight of 0 = exclude from the product (treated as 1)
+- A single low score in any weighted category heavily penalizes the total
+- Rewards mesh blocks that perform well across **all** selected amenities
+
+**Key difference**: In multiplicative mode, weights have exponentially stronger effects. Use lower weights (0.5-1.5) for more subtle emphasis.
+:::
+
+# How are the best places to live zoned?
+
+The chart below shows how the highest scoring mesh blocks 
 
 ```{r}
 sliderInput("top_n", "Number of top mesh blocks to analyze", min = 100, max = 10000, value = 1000, step = 100)
@@ -196,17 +303,58 @@ plotlyOutput('zone_chart')
 
 ```
 
-## Heritage overlays
+# Are the best places to live under heritage overlays?
 
 The chart below shows what percentage of land that permits housing is covered by a heritage overlay.
 
-## LGA analysis
+# Which Local Government Areas have the best access to transport and services?
 
 ```{r}
 
 plotlyOutput('lga_chart')
 
 ```
+
+# Methodology
+
+This accessibility index adapts London's Public Transport Accessibility Level (PTAL) methodology to Greater Melbourne, combining public transport routing with multi-amenity access analysis. Unlike simple distance-based measures, this approach models realistic journey times including walking, waiting, transfers, and temporal constraints.
+
+## Walking Network Foundation
+
+The foundation of accessibility measurement begins with pre-computed walking isochrones from the VicMap road network. Using road infrastructure centroids as nodes and road segments as edges, we calculate walking distances from every point in the network using Dijkstra's algorithm at a walking speed of 84 meters per minute (5 km/h). These isochrones extend up to 20 minutes and are processed in parallel.
+
+## Transit Network Integration
+
+Public transport data comes from GTFS (General Transit Feed Specification) schedules for Melbourne's rail, tram, and bus networks. The analysis filters services to a specific day type (weekday/weekend) and time window to model typical commuting patterns. Each transit stop is linked to the nearest road infrastructure node, creating a bridge between the walking network and transit services.
+
+## Time-Expanded Graph Routing
+
+The core innovation is a time-expanded graph where vertices represent (stop, remaining_time) pairs rather than simple locations. When routing from a mesh block centroid:
+
+1. Walking time to the nearest transit stop is deducted from the total time budget
+2. From each stop, we identify which other stops are walkable and which transit services depart within the feasible time window
+3. Time margins ensure passengers have sufficient walking time between stops before scheduled departures
+4. Temporal dominance pruning skips vertices if a stop has already been visited with more remaining time
+5. The algorithm returns all mesh blocks reachable within the total journey time limit (currently 46 minutes from an 8:59 AM departure)
+
+This approach models real-world constraints: you cannot "double back" in time, and transfers require both walking feasibility and schedule compatibility.
+
+## Amenity Data Aggregation
+
+Multiple amenity types are aggregated at the mesh block level through spatial intersection:
+
+- **Employment**: Proportionally allocated from ABS Destination Zones based on spatial overlap
+- **Open Space**: Derived from OpenStreetMap leisure features (parks, nature reserves, gardens)
+- **Supermarkets**: OSM retail tags (supermarket, greengrocer, grocery)
+- **Community Facilities**: VicMap Features of Interest including sport centers, schools, childcare, tertiary institutions, hospitals, and health facilities
+
+Each reachable mesh block contributes its amenity counts to the origin's accessibility score.
+
+## Accessibility Scoring
+
+Raw accessibility scores sum all amenities reachable within the time budget, weighted by user-defined preferences. The interactive controls above allow real-time re-weighting to explore different accessibility priorities—emphasizing employment access versus education, health services, or recreational amenities.
+
+Final scores are percentile-ranked (0-1 scale) to enable comparison across amenity types with different magnitude ranges. The total accessibility index sums these percentile ranks, creating a composite measure of multi-amenity access quality.
 
 :::
 
@@ -231,23 +379,24 @@ current_weights <- reactive({
 
 # Reactive reweighted mesh block data
 reweighted_data <- reactive({
-  reweight_scores(current_weights())
+  reweight_scores(current_weights(), input$scoring_method)
 })
 
 output$map <- renderRdeck({
   # Initial render with default weights - use isolate to avoid reactivity
-  initial_data <- isolate(reweight_scores(default_weights))
+  initial_data <- isolate(reweight_scores(default_weights, "percentile"))
 
   rdeck(initial_bounds = st_bbox(mesh_block_sf)) %>%
     add_polygon_layer(
       id = "mesh_blocks",
       data = initial_data,
       get_polygon = geom,
-      get_fill_color = scale_color_quantile(total_score, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+      get_fill_color = scale_color_linear(total_score, palette = scales::viridis_pal()),
       get_line_color = "#00000000",
       opacity = 0.5,
       pickable = TRUE,
       tooltip = c(
+        total_score,
         jobs,
         total_open_space_area,
         n_supermarkets,
@@ -261,17 +410,18 @@ output$map <- renderRdeck({
     )
 })
 
-observeEvent(current_weights(), {
+observeEvent(list(current_weights(), input$scoring_method), {
   rdeck_proxy("map") %>%
     add_polygon_layer(
       id = "mesh_blocks",
       data = reweighted_data(),
       get_polygon = geom,
-      get_fill_color = scale_color_quantile(total_score, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+      get_fill_color = scale_color_linear(total_score, palette = scales::viridis_pal()),
       get_line_color = "#00000000",
       opacity = 0.5,
       pickable = TRUE,
       tooltip = c(
+        total_score,
         jobs,
         total_open_space_area,
         n_supermarkets,

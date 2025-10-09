@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Untit1led</title>
+<title>main</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -46,10 +46,21 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">Table of contents</h2>
    
   <ul>
-  <li><a href="#accessibility-map" id="toc-accessibility-map" class="nav-link active" data-scroll-target="#accessibility-map">Accessibility Map</a></li>
-  <li><a href="#zone-analysis" id="toc-zone-analysis" class="nav-link" data-scroll-target="#zone-analysis">Zone analysis</a></li>
-  <li><a href="#heritage-overlays" id="toc-heritage-overlays" class="nav-link" data-scroll-target="#heritage-overlays">Heritage overlays</a></li>
-  <li><a href="#lga-analysis" id="toc-lga-analysis" class="nav-link" data-scroll-target="#lga-analysis">LGA analysis</a></li>
+  <li><a href="#where-in-melbourne-has-the-best-access-to-services" id="toc-where-in-melbourne-has-the-best-access-to-services" class="nav-link active" data-scroll-target="#where-in-melbourne-has-the-best-access-to-services">Where in Melbourne has the best access to services?</a>
+  <ul class="collapse">
+  <li><a href="#scoring-method" id="toc-scoring-method" class="nav-link" data-scroll-target="#scoring-method">Scoring Method</a></li>
+  </ul></li>
+  <li><a href="#how-are-the-best-places-to-live-zoned" id="toc-how-are-the-best-places-to-live-zoned" class="nav-link" data-scroll-target="#how-are-the-best-places-to-live-zoned">How are the best places to live zoned?</a></li>
+  <li><a href="#are-the-best-places-to-live-under-heritage-overlays" id="toc-are-the-best-places-to-live-under-heritage-overlays" class="nav-link" data-scroll-target="#are-the-best-places-to-live-under-heritage-overlays">Are the best places to live under heritage overlays?</a></li>
+  <li><a href="#which-local-government-areas-have-the-best-access-to-transport-and-services" id="toc-which-local-government-areas-have-the-best-access-to-transport-and-services" class="nav-link" data-scroll-target="#which-local-government-areas-have-the-best-access-to-transport-and-services">Which Local Government Areas have the best access to transport and services?</a></li>
+  <li><a href="#methodology" id="toc-methodology" class="nav-link" data-scroll-target="#methodology">Methodology</a>
+  <ul class="collapse">
+  <li><a href="#walking-network-foundation" id="toc-walking-network-foundation" class="nav-link" data-scroll-target="#walking-network-foundation">Walking Network Foundation</a></li>
+  <li><a href="#transit-network-integration" id="toc-transit-network-integration" class="nav-link" data-scroll-target="#transit-network-integration">Transit Network Integration</a></li>
+  <li><a href="#time-expanded-graph-routing" id="toc-time-expanded-graph-routing" class="nav-link" data-scroll-target="#time-expanded-graph-routing">Time-Expanded Graph Routing</a></li>
+  <li><a href="#amenity-data-aggregation" id="toc-amenity-data-aggregation" class="nav-link" data-scroll-target="#amenity-data-aggregation">Amenity Data Aggregation</a></li>
+  <li><a href="#accessibility-scoring" id="toc-accessibility-scoring" class="nav-link" data-scroll-target="#accessibility-scoring">Accessibility Scoring</a></li>
+  </ul></li>
   </ul>
 </nav>
 </div>
@@ -57,23 +68,7 @@ ul.task-list li input[type="checkbox"] {
 </div>
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default">
-<div class="quarto-title">
-<h1 class="title">Untit1led</h1>
-</div>
 
-
-
-<div class="quarto-title-meta">
-
-    
-  
-    
-  </div>
-  
-
-
-</header>
 
 
 <script>
@@ -171,17 +166,77 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 </div>
 </div>
-<section id="accessibility-map" class="level2">
-<h2 class="anchored" data-anchor-id="accessibility-map">Accessibility Map</h2>
+<section id="where-in-melbourne-has-the-best-access-to-services" class="level1">
+<h1>Where in Melbourne has the best access to services?</h1>
+<p>The sliders on the sidebar control the weights of which services are important to you. Adjust the sliders to see which areas in Melbourne have the best access to the services you care about.</p>
 <div class="cell">
 <div class="cell-output-display">
 <div class="rdeck html-widget html-widget-output shiny-report-size html-fill-item" id="map" style="width:100%;height:600px;"></div>
 </div>
 </div>
+<section id="scoring-method" class="level2">
+<h2 class="anchored" data-anchor-id="scoring-method">Scoring Method</h2>
+<p>Different normalization methods emphasize different aspects of the distribution:</p>
+<div class="cell">
+<div class="cell-output-display">
+<div id="scoring_method" class="form-group shiny-input-radiogroup shiny-input-container" role="radiogroup" aria-labelledby="scoring_method-label">
+<label class="control-label" id="scoring_method-label" for="scoring_method">Choose scoring method:</label>
+<div class="shiny-options-group">
+<div class="radio">
+<label>
+<input type="radio" name="scoring_method" value="percentile" checked="checked">
+<span>Percentile Rank (default)</span>
+</label>
+</div>
+<div class="radio">
+<label>
+<input type="radio" name="scoring_method" value="log">
+<span>Log Transform</span>
+</label>
+</div>
+<div class="radio">
+<label>
+<input type="radio" name="scoring_method" value="sigmoid">
+<span>Sigmoid (S-curve)</span>
+</label>
+</div>
+<div class="radio">
+<label>
+<input type="radio" name="scoring_method" value="multiply">
+<span>Balanced (multiply percentiles)</span>
+</label>
+</div>
+</div>
+</div>
+</div>
+</div>
+<p><strong>Percentile Rank</strong>: Ranks areas 0-1 based on position in distribution. Linear relationship.</p>
+<p><strong>Log Transform</strong>: Compresses high values, spreads out low values. Reduces impact of outliers.</p>
+<p><strong>Sigmoid</strong>: S-curve emphasizing middle differences, compressing extremes. Smooth transitions.</p>
+<p><strong>Balanced</strong>: Multiplies percentiles instead of adding. Heavily penalizes having any low scores - rewards well-rounded accessibility.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+How do weights work with each scoring method?
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-1" class="callout-1-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<p><strong>Additive methods</strong> (Percentile, Log, Sigmoid): - Weights act as <strong>multipliers</strong>: <code>score = (jobs × weight) + (open_space × weight) + ...</code> - Weight of 2 = count this amenity twice as much - Weight of 0 = ignore this amenity completely - Total score is a weighted sum</p>
+<p><strong>Multiplicative method</strong> (Balanced): - Weights act as <strong>exponents</strong>: <code>score = (jobs ^ weight) × (open_space ^ weight) × ...</code> - Weight of 2 = square the normalized value (much more dramatic effect) - Weight of 0 = exclude from the product (treated as 1) - A single low score in any weighted category heavily penalizes the total - Rewards mesh blocks that perform well across <strong>all</strong> selected amenities</p>
+<p><strong>Key difference</strong>: In multiplicative mode, weights have exponentially stronger effects. Use lower weights (0.5-1.5) for more subtle emphasis.</p>
+</div>
+</div>
+</div>
 </section>
-<section id="zone-analysis" class="level2">
-<h2 class="anchored" data-anchor-id="zone-analysis">Zone analysis</h2>
-<p>The chart below analyses the zone composition of the top N Mesh Blocks by score with the current weights</p>
+</section>
+<section id="how-are-the-best-places-to-live-zoned" class="level1">
+<h1>How are the best places to live zoned?</h1>
+<p>The chart below shows how the highest scoring mesh blocks</p>
 <div class="cell">
 <div class="cell-output-display">
 <div class="form-group shiny-input-container">
@@ -194,17 +249,56 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 </div>
 </section>
-<section id="heritage-overlays" class="level2">
-<h2 class="anchored" data-anchor-id="heritage-overlays">Heritage overlays</h2>
+<section id="are-the-best-places-to-live-under-heritage-overlays" class="level1">
+<h1>Are the best places to live under heritage overlays?</h1>
 <p>The chart below shows what percentage of land that permits housing is covered by a heritage overlay.</p>
 </section>
-<section id="lga-analysis" class="level2">
-<h2 class="anchored" data-anchor-id="lga-analysis">LGA analysis</h2>
+<section id="which-local-government-areas-have-the-best-access-to-transport-and-services" class="level1">
+<h1>Which Local Government Areas have the best access to transport and services?</h1>
 <div class="cell">
 <div class="cell-output-display">
 <div class="plotly html-widget html-widget-output shiny-report-size shiny-report-theme html-fill-item" id="lga_chart" style="width:100%;height:400px;"></div>
 </div>
 </div>
+</section>
+<section id="methodology" class="level1">
+<h1>Methodology</h1>
+<p>This accessibility index adapts London’s Public Transport Accessibility Level (PTAL) methodology to Greater Melbourne, combining public transport routing with multi-amenity access analysis. Unlike simple distance-based measures, this approach models realistic journey times including walking, waiting, transfers, and temporal constraints.</p>
+<section id="walking-network-foundation" class="level2">
+<h2 class="anchored" data-anchor-id="walking-network-foundation">Walking Network Foundation</h2>
+<p>The foundation of accessibility measurement begins with pre-computed walking isochrones from the VicMap road network. Using road infrastructure centroids as nodes and road segments as edges, we calculate walking distances from every point in the network using Dijkstra’s algorithm at a walking speed of 84 meters per minute (5 km/h). These isochrones extend up to 20 minutes and are processed in parallel.</p>
+</section>
+<section id="transit-network-integration" class="level2">
+<h2 class="anchored" data-anchor-id="transit-network-integration">Transit Network Integration</h2>
+<p>Public transport data comes from GTFS (General Transit Feed Specification) schedules for Melbourne’s rail, tram, and bus networks. The analysis filters services to a specific day type (weekday/weekend) and time window to model typical commuting patterns. Each transit stop is linked to the nearest road infrastructure node, creating a bridge between the walking network and transit services.</p>
+</section>
+<section id="time-expanded-graph-routing" class="level2">
+<h2 class="anchored" data-anchor-id="time-expanded-graph-routing">Time-Expanded Graph Routing</h2>
+<p>The core innovation is a time-expanded graph where vertices represent (stop, remaining_time) pairs rather than simple locations. When routing from a mesh block centroid:</p>
+<ol type="1">
+<li>Walking time to the nearest transit stop is deducted from the total time budget</li>
+<li>From each stop, we identify which other stops are walkable and which transit services depart within the feasible time window</li>
+<li>Time margins ensure passengers have sufficient walking time between stops before scheduled departures</li>
+<li>Temporal dominance pruning skips vertices if a stop has already been visited with more remaining time</li>
+<li>The algorithm returns all mesh blocks reachable within the total journey time limit (currently 46 minutes from an 8:59 AM departure)</li>
+</ol>
+<p>This approach models real-world constraints: you cannot “double back” in time, and transfers require both walking feasibility and schedule compatibility.</p>
+</section>
+<section id="amenity-data-aggregation" class="level2">
+<h2 class="anchored" data-anchor-id="amenity-data-aggregation">Amenity Data Aggregation</h2>
+<p>Multiple amenity types are aggregated at the mesh block level through spatial intersection:</p>
+<ul>
+<li><strong>Employment</strong>: Proportionally allocated from ABS Destination Zones based on spatial overlap</li>
+<li><strong>Open Space</strong>: Derived from OpenStreetMap leisure features (parks, nature reserves, gardens)</li>
+<li><strong>Supermarkets</strong>: OSM retail tags (supermarket, greengrocer, grocery)</li>
+<li><strong>Community Facilities</strong>: VicMap Features of Interest including sport centers, schools, childcare, tertiary institutions, hospitals, and health facilities</li>
+</ul>
+<p>Each reachable mesh block contributes its amenity counts to the origin’s accessibility score.</p>
+</section>
+<section id="accessibility-scoring" class="level2">
+<h2 class="anchored" data-anchor-id="accessibility-scoring">Accessibility Scoring</h2>
+<p>Raw accessibility scores sum all amenities reachable within the time budget, weighted by user-defined preferences. The interactive controls above allow real-time re-weighting to explore different accessibility priorities—emphasizing employment access versus education, health services, or recreational amenities.</p>
+<p>Final scores are percentile-ranked (0-1 scale) to enable comparison across amenity types with different magnitude ranges. The total accessibility index sums these percentile ranks, creating a composite measure of multi-amenity access quality.</p>
 <p>:::</p>
 <p>
 <script type="application/shiny-prerendered" data-context="server-start">
@@ -229,26 +323,86 @@ lga_information <- qs::qread('../qs/mb_lga_info.qs')
 
 source('default_weights.R')
 
-reweight_scores <- function(weights_df) {
+normalize_column <- function(x, method = "percentile") {
+  switch(method,
+    "percentile" = percent_rank(x),
+    "log" = {
+      # Add small constant to handle zeros, then log transform and normalize
+      x_shifted <- x + 1
+      x_log <- log(x_shifted)
+      (x_log - min(x_log, na.rm = TRUE)) / (max(x_log, na.rm = TRUE) - min(x_log, na.rm = TRUE))
+    },
+    "sigmoid" = {
+      # Normalize first, then apply sigmoid centered at median
+      x_norm <- (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+      1 / (1 + exp(-x_norm))
+    },
+    x  # fallback
+  )
+}
+
+reweight_scores <- function(weights_df, scoring_method = "percentile") {
   # TODO: Could make this more concise with reduce2():
   # total_score = reduce2(weights_df$amenity, weights_df$weight, ~..1 + .data[[..2]] * ..3, .init = 0)
 
-  mesh_block_sf %>%
-    mutate(
-      total_score = jobs * weights_df$weight[weights_df$amenity == 'jobs'] +
-        total_open_space_area * weights_df$weight[weights_df$amenity == 'total_open_space_area'] +
-        n_supermarkets * weights_df$weight[weights_df$amenity == 'n_supermarkets'] +
-        n_sport_facility * weights_df$weight[weights_df$amenity == 'n_sport_facility'] +
-        n_education_centre * weights_df$weight[weights_df$amenity == 'n_education_centre'] +
-        n_child_care * weights_df$weight[weights_df$amenity == 'n_child_care'] +
-        n_tertiary_institution * weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] +
-        n_hospital * weights_df$weight[weights_df$amenity == 'n_hospital'] +
-        n_health_facility * weights_df$weight[weights_df$amenity == 'n_health_facility']
-    )
+  if (scoring_method == "multiply") {
+    # Multiply percentiles - penalizes having any low scores
+    mesh_block_sf %>%
+      mutate(
+        # Use percentile rank for multiplication
+        jobs_norm = percent_rank(jobs) + 0.01,  # Add small constant to avoid zeros
+        open_space_norm = percent_rank(total_open_space_area) + 0.01,
+        supermarkets_norm = percent_rank(n_supermarkets) + 0.01,
+        sport_norm = percent_rank(n_sport_facility) + 0.01,
+        education_norm = percent_rank(n_education_centre) + 0.01,
+        childcare_norm = percent_rank(n_child_care) + 0.01,
+        tertiary_norm = percent_rank(n_tertiary_institution) + 0.01,
+        hospital_norm = percent_rank(n_hospital) + 0.01,
+        health_norm = percent_rank(n_health_facility) + 0.01,
+        # Multiply weighted scores (only include non-zero weights)
+        total_score =
+          (if(weights_df$weight[weights_df$amenity == 'jobs'] > 0) jobs_norm^weights_df$weight[weights_df$amenity == 'jobs'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'total_open_space_area'] > 0) open_space_norm^weights_df$weight[weights_df$amenity == 'total_open_space_area'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_supermarkets'] > 0) supermarkets_norm^weights_df$weight[weights_df$amenity == 'n_supermarkets'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_sport_facility'] > 0) sport_norm^weights_df$weight[weights_df$amenity == 'n_sport_facility'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_education_centre'] > 0) education_norm^weights_df$weight[weights_df$amenity == 'n_education_centre'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_child_care'] > 0) childcare_norm^weights_df$weight[weights_df$amenity == 'n_child_care'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] > 0) tertiary_norm^weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_hospital'] > 0) hospital_norm^weights_df$weight[weights_df$amenity == 'n_hospital'] else 1) *
+          (if(weights_df$weight[weights_df$amenity == 'n_health_facility'] > 0) health_norm^weights_df$weight[weights_df$amenity == 'n_health_facility'] else 1)
+      ) %>%
+      select(-ends_with("_norm"))
+  } else {
+    # Standard additive approach with various normalizations
+    mesh_block_sf %>%
+      mutate(
+        # Normalize each amenity first
+        jobs_norm = normalize_column(jobs, scoring_method),
+        open_space_norm = normalize_column(total_open_space_area, scoring_method),
+        supermarkets_norm = normalize_column(n_supermarkets, scoring_method),
+        sport_norm = normalize_column(n_sport_facility, scoring_method),
+        education_norm = normalize_column(n_education_centre, scoring_method),
+        childcare_norm = normalize_column(n_child_care, scoring_method),
+        tertiary_norm = normalize_column(n_tertiary_institution, scoring_method),
+        hospital_norm = normalize_column(n_hospital, scoring_method),
+        health_norm = normalize_column(n_health_facility, scoring_method),
+        # Then weight and sum
+        total_score = jobs_norm * weights_df$weight[weights_df$amenity == 'jobs'] +
+          open_space_norm * weights_df$weight[weights_df$amenity == 'total_open_space_area'] +
+          supermarkets_norm * weights_df$weight[weights_df$amenity == 'n_supermarkets'] +
+          sport_norm * weights_df$weight[weights_df$amenity == 'n_sport_facility'] +
+          education_norm * weights_df$weight[weights_df$amenity == 'n_education_centre'] +
+          childcare_norm * weights_df$weight[weights_df$amenity == 'n_child_care'] +
+          tertiary_norm * weights_df$weight[weights_df$amenity == 'n_tertiary_institution'] +
+          hospital_norm * weights_df$weight[weights_df$amenity == 'n_hospital'] +
+          health_norm * weights_df$weight[weights_df$amenity == 'n_health_facility']
+      ) %>%
+      select(-ends_with("_norm"))  # Clean up intermediate columns
+  }
 }
 
 convert_zones_to_short <- function(df) {
-
+#Thank you to Jonathan Nolan for this code as part of his work on the Melbourne Property Map
   df %>% mutate(zone_short =  str_replace(ZONE_CODE, "[0-9]+$", ""),
                           zone_short = case_when(
                             #lga == "MELBOURNE" & zone_code %in% c("SUZ6","SUZ7") ~ "Mixed use", #Special use zone are a rare zone that usually don't permit any development, although occasionally they're placed on resi sites. These few are for Arden
@@ -340,23 +494,24 @@ current_weights <- reactive({
 
 # Reactive reweighted mesh block data
 reweighted_data <- reactive({
-  reweight_scores(current_weights())
+  reweight_scores(current_weights(), input$scoring_method)
 })
 
 output$map <- renderRdeck({
   # Initial render with default weights - use isolate to avoid reactivity
-  initial_data <- isolate(reweight_scores(default_weights))
+  initial_data <- isolate(reweight_scores(default_weights, "percentile"))
 
   rdeck(initial_bounds = st_bbox(mesh_block_sf)) %>%
     add_polygon_layer(
       id = "mesh_blocks",
       data = initial_data,
       get_polygon = geom,
-      get_fill_color = scale_color_quantile(total_score, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+      get_fill_color = scale_color_linear(total_score, palette = scales::viridis_pal()),
       get_line_color = "#00000000",
       opacity = 0.5,
       pickable = TRUE,
       tooltip = c(
+        total_score,
         jobs,
         total_open_space_area,
         n_supermarkets,
@@ -370,17 +525,18 @@ output$map <- renderRdeck({
     )
 })
 
-observeEvent(current_weights(), {
+observeEvent(list(current_weights(), input$scoring_method), {
   rdeck_proxy("map") %>%
     add_polygon_layer(
       id = "mesh_blocks",
       data = reweighted_data(),
       get_polygon = geom,
-      get_fill_color = scale_color_quantile(total_score, palette = scales::viridis_pal(), probs = seq.int(0,1,0.1)),
+      get_fill_color = scale_color_linear(total_score, palette = scales::viridis_pal()),
       get_line_color = "#00000000",
       opacity = 0.5,
       pickable = TRUE,
       tooltip = c(
+        total_score,
         jobs,
         total_open_space_area,
         n_supermarkets,
@@ -487,6 +643,7 @@ ojs_define <- function(..., .session = shiny::getDefaultReactiveDomain()) {
 {"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages"]}},"value":[{"type":"list","attributes":{"names":{"type":"character","attributes":{},"value":["packages","version"]},"class":{"type":"character","attributes":{},"value":["data.frame"]},"row.names":{"type":"integer","attributes":{},"value":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82]}},"value":[{"type":"character","attributes":{},"value":["base","bslib","cachem","class","classInt","cli","compiler","data.table","datasets","DBI","digest","dplyr","e1071","evaluate","farver","fastmap","forcats","generics","ggplot2","glue","graphics","grDevices","grid","gtable","hms","htmltools","htmlwidgets","httpuv","httr","jquerylib","jsonlite","KernSmooth","knitr","later","lazyeval","lifecycle","lubridate","magrittr","memoise","methods","mime","pillar","pkgconfig","plotly","promises","proxy","purrr","qs","R6","RApiSerialize","RColorBrewer","Rcpp","RcppParallel","rdeck","readr","rlang","rmarkdown","rstudioapi","sass","scales","sf","shiny","stats","stringfish","stringi","stringr","stylebox","tibble","tidyr","tidyselect","tidyverse","timechange","tools","tzdb","units","utils","vctrs","viridisLite","withr","xfun","xtable","yaml"]},{"type":"character","attributes":{},"value":["4.4.3","0.9.0","1.1.0","7.3-23","0.4-11","3.6.5","4.4.3","1.17.0","4.4.3","1.2.3","0.6.37","1.1.4","1.7-16","1.0.5","2.1.2","1.2.0","1.0.0","0.1.4","3.5.1","1.8.0","4.4.3","4.4.3","4.4.3","0.3.6","1.1.3","0.5.8.1","1.6.4","1.6.16","1.4.7","0.1.4","2.0.0","2.23-26","1.50","1.4.2","0.2.2","1.0.4","1.9.4","2.0.4","2.0.1","4.4.3","0.13","1.11.0","2.0.3","4.11.0","1.3.3","0.4-27","1.1.0","0.27.3","2.6.1","0.1.4","1.1-3","1.1.0","5.1.11-1","0.5.2.9000","2.1.5","1.1.6","2.29","0.17.1","0.4.10","1.4.0","1.0-21","1.10.0","4.4.3","0.17.0","1.8.4","1.5.1","0.4.0","3.3.0","1.3.1","1.2.1","2.0.0","0.3.0","4.4.3","0.5.0","0.8-7","4.4.3","0.6.5","0.4.2","3.0.2","0.53","1.8-4","2.3.10"]}]}]}
 </script>
 <!--/html_preserve-->
+</section>
 </section>
 
 </main>

@@ -125,6 +125,64 @@ code, pre {
   font-weight: bold;
 }
 
+/* Callout boxes - info/note styling */
+.callout {
+  background-color: #282c34 !important;
+  border-left: 4px solid #98c379 !important;
+  border-radius: 4px;
+  padding: 1rem 1.5rem;
+  margin: 1rem 0;
+}
+
+.callout.callout-note {
+  border-left-color: #98c379 !important;
+}
+
+.callout-header,
+div.callout-note.callout-style-default > .callout-header {
+  background-color: transparent !important;
+  color: #98c379 !important;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.callout-icon {
+  color: #98c379 !important;
+}
+
+.callout-title {
+  color: #98c379 !important;
+  font-weight: bold;
+}
+
+.callout-body {
+  color: #abb2bf !important;
+}
+
+.callout ul, .callout ol, .callout p {
+  color: #abb2bf !important;
+}
+
+.callout strong {
+  color: #e5c07b !important;
+}
+
+.callout code {
+  background-color: #191A1A !important;
+  color: #61afef !important;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Callout collapse button */
+.callout-btn-toggle {
+  color: #98c379 !important;
+}
+
+.callout-btn-toggle:before {
+  color: #98c379 !important;
+}
+
 /* Widen the TOC sidebar to fit controls and pin to left edge */
 #quarto-sidebar-toc-left {
   width: 350px !important;
