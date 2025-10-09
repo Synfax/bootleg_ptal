@@ -2,6 +2,9 @@
 title: "Untit1led"
 format:
   html:
+    theme: zephyr
+    toc: true
+    toc-location: left
     css: css/styles.css
 server: shiny
 ---
@@ -27,6 +30,7 @@ trimmed_scores <- qs::qread('../qs/trimmed_scores.qs') %>%
   as.data.frame()
 
 zone_information <- qs::qread('../qs/mb_zone_info.qs')
+lga_information <- qs::qread('../qs/mb_lga_info.qs')
 
 source('default_weights.R')
 
@@ -122,15 +126,44 @@ apply_plotly_theme <- function(p) {
 
 ```
 
-:::{.column-page}
-::: {.grid}
-::: {.g-col-9}
-```{r}
-rdeckOutput("map", width = "100%", height = "600px")
-```
-:::
+```{=html}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const toc = document.querySelector('nav#TOC');
+  const sidebar = document.querySelector('#quarto-sidebar-toc-left');
+  const controls = document.querySelector('.controls-in-toc');
 
-::: {.g-col-3}
+  // Save original location
+  const originalParent = controls.parentElement;
+  const originalNextSibling = controls.nextElementSibling;
+
+  function moveControls() {
+    const sidebarStyle = sidebar ? window.getComputedStyle(sidebar) : null;
+    const isFixed = sidebarStyle && sidebarStyle.position === 'fixed';
+    const isVisible = sidebarStyle && sidebarStyle.display !== 'none';
+
+    if (!isFixed || !isVisible) {
+      // Mobile/tablet (relative position) or sidebar hidden - move back to original location
+      if (originalNextSibling) {
+        originalParent.insertBefore(controls, originalNextSibling);
+      } else {
+        originalParent.appendChild(controls);
+      }
+    } else {
+      // Desktop with fixed sidebar - move into TOC
+      if (toc && controls.parentElement !== toc) {
+        toc.appendChild(controls);
+      }
+    }
+  }
+
+  moveControls();
+  window.addEventListener('resize', moveControls);
+});
+</script>
+```
+
+::: {.controls-in-toc}
 ```{r}
 h4("Amenity Weights")
 
@@ -145,14 +178,37 @@ sliderInput("weight_hospital", "Hospital", min = 0, max = 2, value = default_wei
 sliderInput("weight_health", "Health Facilities", min = 0, max = 2, value = default_weights$weight[default_weights$amenity == 'n_health_facility'], step = 0.1)
 ```
 :::
-:::
-:::
+
+## Accessibility Map
 
 ```{r}
+rdeckOutput("map", width = "100%", height = "600px")
+```
+
+## Zone analysis
+
+The chart below analyses the zone composition of the top N Mesh Blocks by score with the current weights
+
+```{r}
+sliderInput("top_n", "Number of top mesh blocks to analyze", min = 100, max = 10000, value = 1000, step = 100)
 
 plotlyOutput('zone_chart')
 
 ```
+
+## Heritage overlays
+
+The chart below shows what percentage of land that permits housing is covered by a heritage overlay.
+
+## LGA analysis
+
+```{r}
+
+plotlyOutput('lga_chart')
+
+```
+
+:::
 
 ```{r}
 #| context: server
@@ -233,7 +289,7 @@ output$zone_chart <- renderPlotly({
   data <- reweighted_data() %>%
     st_drop_geometry() %>%
     arrange(-total_score) %>%
-    slice_head(n=1000) %>%
+    slice_head(n = input$top_n) %>%
     select(MB_CODE21, total_score) %>%
     left_join(zone_information, by = c('MB_CODE21' = 'MB_CODE21')) %>%
     convert_zones_to_short() %>%
@@ -242,37 +298,45 @@ output$zone_chart <- renderPlotly({
     mutate(sum_area = units::drop_units(sum_area),
            percent_area = sum_area/sum(sum_area))
 
-  p <- ggplot(data, aes(x = reorder(zone_short, sum_area), y = sum_area,
-                        text = paste0(zone_short, "<br>Area: ", round(sum_area, 0)))) +
+  p <- (ggplot(data, aes(x = reorder(zone_short, percent_area), y = percent_area,
+                        text = paste0(zone_short, "<br>Area: ", round(percent_area, 1)))) +
     geom_col(fill = "#61afef") +
-    labs(x = NULL, y = "Total Area") +
+    labs(x = NULL, y = "% of area") +
     theme_terminal() +
-    coord_flip()
+    coord_flip()) %>% ggplotly()
 
   apply_plotly_theme(p) %>%
     layout(hovermode = "closest") %>%
     style(hoverinfo = "text")
   
+})
+
+output$lga_chart <- renderPlotly({
   
+  data <- reweighted_data() %>%
+    st_drop_geometry() %>%
+    arrange(-total_score) %>%
+    slice_head(n = input$top_n) %>%
+    select(MB_CODE21, total_score) %>%
+    left_join(lga_information, by = c('MB_CODE21' = 'MB_CODE21')) %>%
+    st_drop_geometry() %>% 
+    count(LGA_NAME24) %>% 
+    arrange(-n) %>% 
+    slice_head(n = 8) %>% 
+    mutate(percent_total = round(n/sum(n),2))
   
-  # trimmed_scores %>% 
-  #   arrange(total_score) %>% 
-  #   slice_head(n=10000) %>% 
-  #   left_join(zone_information, by = 'MB_CODE21') %>% 
-  #   convert_zones_to_short() %>% 
-  #   filter(zone_short == 'OTHER') %>% 
-  #   count(ZONE_CODE) %>% arrange(-n)
+  p <- (ggplot(data, aes(x = reorder(LGA_NAME24, percent_total), y = percent_total,
+                        text = paste0(LGA_NAME24, "<br>Percent: ", round(percent_total, 2)))) +
+    geom_col(fill = "#61afef") +
+    labs(x = NULL, y = "Percent of top MBs") +
+    theme_terminal() +
+    coord_flip()) %>% 
+    ggplotly()
+
+  apply_plotly_theme(p) %>%
+    layout(hovermode = "closest") %>%
+    style(hoverinfo = "text")
   
-  # data %>% 
-  #   convert_zones_to_short() %>% 
-  #   filter(zone_short == 'Rural/regional') %>% 
-  #   select(MB_CODE21) %>% 
-  #   left_join(mb_sf, by = 'MB_CODE21') %>% 
-  #   st_set_geometry('geometry') %>% 
-  #   st_transform('wgs84') %>% 
-  #   leaflet() %>% 
-  #   addProviderTiles('CartoDB.Positron') %>% 
-  #   addPolygons()
 })
 
 ```

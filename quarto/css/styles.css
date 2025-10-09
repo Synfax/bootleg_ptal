@@ -82,6 +82,17 @@ nav#TOC,
   color: #abb2bf;
 }
 
+/* Slider labels */
+.form-group label,
+.control-label {
+  color: #ffffff !important;
+}
+
+/* Make sliders full width */
+.shiny-input-container {
+  width: 100% !important;
+}
+
 /* Code blocks */
 code, pre {
   font-family: 'Berkeley Mono', monospace;
@@ -112,4 +123,115 @@ code, pre {
 .rdeck-tooltip tr td:first-child {
   color: #61afef;
   font-weight: bold;
+}
+
+/* Widen the TOC sidebar to fit controls and pin to left edge */
+#quarto-sidebar-toc-left {
+  width: 350px !important;
+}
+
+/* Pin sidebar to left edge with no margin/padding */
+@media (min-width: 992px) {
+  #quarto-sidebar-toc-left {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    height: 100vh !important;
+    border-right: 2px solid #61afef !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    margin-left: 0 !important;
+    overflow-y: auto !important;
+    background-color: #191A1A !important;
+  }
+
+  /* Adjust body and containers */
+  body {
+    padding-left: 370px !important;
+    padding-right: 0 !important;
+  }
+
+  /* Make all content containers full width */
+  #quarto-content,
+  .page-columns,
+  main,
+  .column-page,
+  .column-body {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Remove any centering */
+  #quarto-content > * {
+    max-width: 100% !important;
+  }
+}
+
+/* Style controls in TOC */
+.controls-in-toc {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #61afef;
+}
+
+.controls-in-toc h4 {
+  color: #61afef;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Mobile collapsible controls */
+@media (max-width: 991px) {
+  /* Reset body padding on mobile */
+  body {
+    padding-left: 0 !important;
+  }
+
+  /* Make sidebar behave normally on mobile */
+  #quarto-sidebar-toc-left {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    height: auto !important;
+    width: 100% !important;
+    border-right: none !important;
+  }
+
+  /* Full width content on mobile */
+  #quarto-content,
+  .page-columns,
+  main,
+  .column-page,
+  .column-body {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  /* Collapsible controls */
+  .controls-in-toc {
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem;
+  }
+
+  .controls-in-toc h4 {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .controls-in-toc h4::after {
+    content: " ▼";
+    float: right;
+    transition: transform 0.3s;
+  }
+
+  .controls-in-toc.collapsed h4::after {
+    transform: rotate(-90deg);
+  }
+
+  .controls-in-toc.collapsed .cell {
+    display: none;
+  }
 }

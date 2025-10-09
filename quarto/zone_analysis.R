@@ -17,4 +17,15 @@ mb_intersects_clean = mb_intersects %>%
   select(MB_CODE21, ZONE_CODE, intersect_area) %>%
   st_drop_geometry()
 
+#LGA analysis
+lga_sf <- st_read('../shapefiles/LGA_2024_AUST_GDA2020/LGA_2024_AUST_GDA2020.shp') %>%
+  st_transform(7855)
+
+joined_mb_lga <- st_join(mb_sf, lga_sf, largest = T)
+joined_mb_lga_clean <- joined_mb_lga %>%
+  select(MB_CODE21, LGA_NAME24) %>%
+  st_drop_geometry()
+
+qs::qsave(joined_mb_lga_clean, 'qs/mb_lga_info.qs')
+
 qs::qsave(mb_intersects_clean,'qs/mb_zone_info.qs')

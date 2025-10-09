@@ -4,6 +4,7 @@ format:
   html:
     theme: zephyr
     toc: true
+    toc-location: left
     css: css/styles.css
 server: shiny
 params:
@@ -88,15 +89,42 @@ rename_amenities <- function(table) {
 }
 
 format_output <- function(table) {
-  table %>% 
+  table %>%
     mutate(number = ifelse(amenity == 'jobs', number/10^3, number)) %>%
-    mutate(median = ifelse(amenity == 'jobs', median/10^3, median)) %>% 
-    mutate(max = ifelse(amenity == 'jobs', max/10^3, max)) %>% 
-    mutate(number = ifelse(amenity == 'total_open_space_area', number/10^6, number)) %>% 
-    mutate(median = ifelse(amenity == 'total_open_space_area', median/10^6, median)) %>% 
-    mutate(max = ifelse(amenity == 'total_open_space_area', max/10^6, max)) %>% 
+    mutate(median = ifelse(amenity == 'jobs', median/10^3, median)) %>%
+    mutate(max = ifelse(amenity == 'jobs', max/10^3, max)) %>%
+    mutate(number = ifelse(amenity == 'total_open_space_area', number/10^6, number)) %>%
+    mutate(median = ifelse(amenity == 'total_open_space_area', median/10^6, median)) %>%
+    mutate(max = ifelse(amenity == 'total_open_space_area', max/10^6, max)) %>%
     mutate(across(where(is.numeric), ~round(.,2)))
 }
+
+# Terminal theme for reactable tables
+terminal_reactable_theme <- reactableTheme(
+  color = "#e5c07b",
+  backgroundColor = "#191A1A",
+  borderColor = "#282c34",
+  stripedColor = "#1e2127",
+  highlightColor = "#282c34",
+  cellPadding = "8px 12px",
+  style = list(
+    fontFamily = "Berkeley Mono, monospace"
+  ),
+  searchInputStyle = list(
+    backgroundColor = "#282c34",
+    color = "#e5c07b",
+    border = "1px solid #61afef"
+  ),
+  headerStyle = list(
+    backgroundColor = "#282c34",
+    color = "#ffffff",
+    fontWeight = "bold",
+    borderBottom = "2px solid #61afef"
+  ),
+  rowStyle = list(
+    cursor = "pointer"
+  )
+)
 
 ```
 
@@ -122,7 +150,7 @@ mb_code_reactive <- reactive({
 })
 
 ```
-
+:::{.column-body-outset}
 ## Mesh block details
 
 ```{r}
@@ -132,7 +160,7 @@ reactableOutput('mb_info_table')
 ```
 
 ## Mesh block reach map
-:::{.column-body-outset}
+
 ```{r}
 
 textOutput("mb_message")
@@ -174,17 +202,17 @@ output$mb_map <- renderRdeck({
 })
 
 output$mb_info_table <- renderReactable({
-  
+
   mesh_block_object <- mb_code_reactive()
   mb_code <- mb_code_reactive()$mb_code21
-  
-  mb_dt[mb_code] %>% 
-    as.data.frame() %>% 
-    st_drop_geometry() %>% 
-    select(MB_CAT21, SA2_NAME21, SA3_NAME21, SA4_NAME21) %>% 
-    pivot_longer(cols = everything(), values_to = 'Value', names_to = 'Key') %>% 
-    reactable()
-  
+
+  mb_dt[mb_code] %>%
+    as.data.frame() %>%
+    st_drop_geometry() %>%
+    select(MB_CAT21, SA2_NAME21, SA3_NAME21, SA4_NAME21) %>%
+    pivot_longer(cols = everything(), values_to = 'Value', names_to = 'Key') %>%
+    reactable(theme = terminal_reactable_theme)
+
 })
 
 output$amenity_table <- renderReactable({
@@ -215,6 +243,7 @@ output$amenity_table <- renderReactable({
 
   reactable(
     table_data,
+    theme = terminal_reactable_theme,
     columns = list(
       amenity = colDef(name = "Amenity", minWidth = 150),
       number = colDef(name = "This Mesh Block", width = 120),
