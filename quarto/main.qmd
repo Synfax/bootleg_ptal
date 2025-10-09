@@ -2,18 +2,16 @@
 title: "Untit1led"
 format:
   html:
-    toc: true
     css: css/styles.css
 server: shiny
 ---
-
-# BOOTLEG PTAL
 
 ```{r}
 #| context: setup
 #| include: false
 
 library(tidyverse)
+library(plotly)
 library(shiny)
 library(sf)
 library(rdeck)
@@ -22,11 +20,13 @@ library(rdeck)
 addResourcePath("font", "font")
 
 mesh_block_sf <- read_sf('sf_input/final_result.gpkg') %>%
-  st_transform('wgs84') %>% 
-  select(1:10)
+  st_transform('wgs84') %>%
+  select(1:11)
 
-trimmed_scores <- qs::qread('../qs/trimmed_scores.qs') %>% 
+trimmed_scores <- qs::qread('../qs/trimmed_scores.qs') %>%
   as.data.frame()
+
+zone_information <- qs::qread('../qs/mb_zone_info.qs')
 
 source('default_weights.R')
 
@@ -48,6 +48,77 @@ reweight_scores <- function(weights_df) {
     )
 }
 
+convert_zones_to_short <- function(df) {
+
+  df %>% mutate(zone_short =  str_replace(ZONE_CODE, "[0-9]+$", ""),
+                          zone_short = case_when(
+                            #lga == "MELBOURNE" & zone_code %in% c("SUZ6","SUZ7") ~ "Mixed use", #Special use zone are a rare zone that usually don't permit any development, although occasionally they're placed on resi sites. These few are for Arden
+                                                 str_detect(zone_short,"SUZ")  ~ "Commercial only", #Special use zone are varied, but we want to limit category numbers and they are usually most similar to commerical zoning.
+                                                 str_detect(zone_short,"IN|PZ") ~ "Industrial",
+                                                 zone_short == "CA" ~ "Commonwealth land",
+                                                 zone_short %in% c("R1Z","GRZ") ~ "General residential",
+                                                 zone_short %in% c("DZ",
+                                                                   "CCZ",
+                                                                   "CDZ",
+                                                                   "MUZ",
+                                                                   "ACZ",
+                                                                   "PDZ",
+                                                                   "C1Z",
+                                                                   "C3Z"
+                                                                   )     ~ "Mixed use",
+                                                 substr(zone_short,1,1) =="B" ~ "Mixed use",#https://www.pc.gov.au/research/completed/vic-commercial-zoning/vic-commercial-zoning.pdf
+                                                 zone_short == "RGZ" ~ "Residential growth",
+                                                 zone_short == "UGZ" ~ "Greenfield",
+                                                 substr(zone_short,1,1) =="C" ~ "Commercial only",
+                                                 substr(zone_short,1,1) %in% c("R","F") ~ "Rural/regional",
+                                                 substr(zone_short,1,2) == "GW" ~ "Rural/regional",
+                                                 zone_short == "TZ" ~ "Rural/regional",
+                                                 zone_short %in% c("PPRZ",
+                                                                   "PUZ",
+                                                                   "PCRZ",
+                                                                   "UFZ",
+                                                                   "TRZ") ~ "Civic land",
+                                                 zone_short == "NRZ" ~ "Neighbourhood residential",
+                                                 zone_short == "LDRZ" ~ "Low density residential",
+                          T ~ zone_short)) %>%
+  mutate(zoning_permits_housing = case_when(zone_short %in% c("General residential",
+                                                     "Low density residential",
+                                                     "Mixed use",
+                                                     "Residential growth",
+                                                     "Neighbourhood residential",
+                                                     "Greenfield") ~ "Housing permitted",
+                                   zone_short == "Rural/regional" ~ "Rural/regional",
+                                   T ~ "Housing not generally permitted"))
+
+}
+
+# Terminal theme for ggplot
+theme_terminal <- function() {
+  theme_minimal() +
+    theme(
+      plot.background = element_rect(fill = "#191A1A", color = NA),
+      panel.background = element_rect(fill = "#191A1A", color = NA),
+      panel.grid.major = element_line(color = "#282c34"),
+      panel.grid.minor = element_blank(),
+      text = element_text(family = "Berkeley Mono", color = "#e5c07b"),
+      axis.text = element_text(color = "#abb2bf"),
+      axis.title = element_text(color = "#e5c07b"),
+      plot.title = element_text(color = "#e5c07b"),
+      legend.background = element_rect(fill = "#191A1A", color = NA),
+      legend.text = element_text(color = "#abb2bf"),
+      legend.title = element_text(color = "#e5c07b")
+    )
+}
+
+# Apply terminal theme to plotly
+apply_plotly_theme <- function(p) {
+  ggplotly(p) %>%
+    layout(
+      paper_bgcolor = "#191A1A",
+      plot_bgcolor = "#191A1A",
+      font = list(family = "Berkeley Mono", color = "#e5c07b")
+    )
+}
 
 ```
 
@@ -76,6 +147,12 @@ sliderInput("weight_health", "Health Facilities", min = 0, max = 2, value = defa
 :::
 :::
 :::
+
+```{r}
+
+plotlyOutput('zone_chart')
+
+```
 
 ```{r}
 #| context: server
@@ -151,4 +228,51 @@ observeEvent(current_weights(), {
       )
     )
 }, ignoreInit = TRUE)
+
+output$zone_chart <- renderPlotly({
+  data <- reweighted_data() %>%
+    st_drop_geometry() %>%
+    arrange(-total_score) %>%
+    slice_head(n=1000) %>%
+    select(MB_CODE21, total_score) %>%
+    left_join(zone_information, by = c('MB_CODE21' = 'MB_CODE21')) %>%
+    convert_zones_to_short() %>%
+    group_by(zone_short) %>%
+    summarise(sum_area = sum(intersect_area)) %>%
+    mutate(sum_area = units::drop_units(sum_area),
+           percent_area = sum_area/sum(sum_area))
+
+  p <- ggplot(data, aes(x = reorder(zone_short, sum_area), y = sum_area,
+                        text = paste0(zone_short, "<br>Area: ", round(sum_area, 0)))) +
+    geom_col(fill = "#61afef") +
+    labs(x = NULL, y = "Total Area") +
+    theme_terminal() +
+    coord_flip()
+
+  apply_plotly_theme(p) %>%
+    layout(hovermode = "closest") %>%
+    style(hoverinfo = "text")
+  
+  
+  
+  # trimmed_scores %>% 
+  #   arrange(total_score) %>% 
+  #   slice_head(n=10000) %>% 
+  #   left_join(zone_information, by = 'MB_CODE21') %>% 
+  #   convert_zones_to_short() %>% 
+  #   filter(zone_short == 'OTHER') %>% 
+  #   count(ZONE_CODE) %>% arrange(-n)
+  
+  # data %>% 
+  #   convert_zones_to_short() %>% 
+  #   filter(zone_short == 'Rural/regional') %>% 
+  #   select(MB_CODE21) %>% 
+  #   left_join(mb_sf, by = 'MB_CODE21') %>% 
+  #   st_set_geometry('geometry') %>% 
+  #   st_transform('wgs84') %>% 
+  #   leaflet() %>% 
+  #   addProviderTiles('CartoDB.Positron') %>% 
+  #   addPolygons()
+})
+
 ```

@@ -26,4 +26,7 @@ quarto/font
 quarto/mesh_block_files/
 qs/
 .Renviron
-
+quarto/_extensions/
+_extensions/
+_extensions/*
+quarto/_extensions/*

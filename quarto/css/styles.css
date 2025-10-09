@@ -48,12 +48,12 @@ a:hover {
 nav#TOC,
 .quarto-sidebar-toggle,
 .margin-sidebar {
-  background-color: #282c34 !important;
+  background-color: transparent !important;
   color: #abb2bf !important;
 }
 
 #quarto-sidebar .sidebar-menu-container {
-  background-color: #282c34 !important;
+  background-color: transparent !important;
 }
 
 /* Input controls */
