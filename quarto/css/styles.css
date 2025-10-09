@@ -5,7 +5,22 @@
   font-style: normal;
 }
 
-/* Cool Modern Terminal Theme */
+/* Cool Modern Terminal Theme
+ *
+ * Color Palette:
+ * - Background: #191A1A (dark charcoal)
+ * - Main text: #e5c07b (soft yellow-gold)
+ * - Headings: #e6b800 (bright golden yellow)
+ * - Links/Blue accent: #61afef (bright blue)
+ * - Secondary text: #abb2bf (off-white grey)
+ * - Green accent: #98c379 (soft green - callouts, dropdowns)
+ * - Panel background: #282c34 (dark blue-grey)
+ * - Dark panel: #1e2127 (darker blue-grey)
+ * - Border grey: #dee2e6 (light grey)
+ * - Border dark: #3e4451 (medium grey)
+ * - White: #ffffff (pure white for emphasis)
+ */
+
 body {
   font-family: 'Berkeley Mono', monospace;
   background-color: #191A1A;
@@ -14,7 +29,7 @@ body {
 
 /* Headers */
 h1, h2, h3, h4, h5, h6 {
-  color: #e5c07b;
+  color: #e6b800;
 }
 
 /* Links and buttons */
@@ -69,6 +84,45 @@ nav#TOC,
   border-color: #61afef;
 }
 
+/* Select dropdowns - green styling for selectize */
+.selectize-input {
+  background-color: transparent !important;
+  border: 2px solid #ffffff !important;
+  color: #98c379 !important;
+  font-weight: bold;
+  box-shadow: none !important;
+}
+
+.selectize-input.focus {
+  background-color: transparent !important;
+  border-color: #98c379 !important;
+}
+
+.selectize-input .item {
+  color: #98c379 !important;
+}
+
+.selectize-dropdown {
+  background-color: #282c34 !important;
+  border: 2px solid #98c379 !important;
+}
+
+.selectize-dropdown .option {
+  background-color: #282c34 !important;
+  color: #98c379 !important;
+}
+
+.selectize-dropdown .option:hover,
+.selectize-dropdown .option.active {
+  background-color: #3e4451 !important;
+  color: #98c379 !important;
+}
+
+.selectize-dropdown .option.selected {
+  background-color: #3e4451 !important;
+  color: #98c379 !important;
+}
+
 /* Slider styling */
 .irs-bar, .irs-from, .irs-to, .irs-single {
   background-color: #61afef;
@@ -78,8 +132,47 @@ nav#TOC,
   background-color: #3e4451;
 }
 
+/* Dull sidebar slider track */
+.controls-in-toc .irs-line,
+nav#TOC .irs-line {
+  background: #2c313a !important;
+  background-image: none !important;
+  border-color: #191A1A !important;
+}
+
+/* Square slider handle for sidebar */
+.controls-in-toc .irs-handle,
+nav#TOC .irs-handle {
+  border-radius: 0 !important;
+  background: #191A1A !important;
+  background-image: none !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: none !important;
+}
+
+.controls-in-toc .irs-handle i,
+nav#TOC .irs-handle i {
+  display: none !important;
+}
+
 .irs-grid-text {
   color: #abb2bf;
+}
+
+/* Hide slider grid ticks only in sidebar */
+.controls-in-toc .irs-grid,
+nav#TOC .irs-grid {
+  display: none !important;
+}
+
+/* Make min/max labels bigger in sidebar to compensate */
+.controls-in-toc .irs-min,
+.controls-in-toc .irs-max,
+nav#TOC .irs-min,
+nav#TOC .irs-max {
+  font-size: 14px !important;
+  font-weight: bold;
+  color: #abb2bf !important;
 }
 
 /* Slider labels */
@@ -195,7 +288,7 @@ div.callout-note.callout-style-default > .callout-header {
     left: 0 !important;
     top: 0 !important;
     height: 100vh !important;
-    border-right: 2px solid #61afef !important;
+    border-right: 2px solid #dee2e6 !important;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
     margin-left: 0 !important;

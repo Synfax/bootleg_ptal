@@ -31,6 +31,7 @@ trimmed_scores <- qs::qread('../qs/trimmed_scores.qs') %>%
 
 zone_information <- qs::qread('../qs/mb_zone_info.qs')
 lga_information <- qs::qread('../qs/mb_lga_info.qs')
+heritage_information <- qs::qread('../qs/heritage_mb_overlay.qs')
 
 source('default_weights.R')
 
@@ -247,6 +248,24 @@ The sliders on the sidebar control the weights of which services are important t
 rdeckOutput("map", width = "100%", height = "600px")
 ```
 
+## Journey Parameters
+
+```{r}
+selectInput(
+  "day_of_week",
+  "Day of week:",
+  choices = c("Weekday", "Saturday", "Sunday"),
+  selected = "Weekday"
+)
+
+selectInput(
+  "time_limit",
+  "Maximum journey time:",
+  choices = c("15 mins", "30 mins", "45 mins"),
+  selected = "45 mins"
+)
+```
+
 ## Scoring Method
 
 Different normalization methods emphasize different aspects of the distribution:
@@ -306,6 +325,12 @@ plotlyOutput('zone_chart')
 # Are the best places to live under heritage overlays?
 
 The chart below shows what percentage of land that permits housing is covered by a heritage overlay.
+
+```{r}
+
+plotlyOutput('heritage_chart')
+
+```
 
 # Which Local Government Areas have the best access to transport and services?
 
@@ -487,6 +512,33 @@ output$lga_chart <- renderPlotly({
     layout(hovermode = "closest") %>%
     style(hoverinfo = "text")
   
+})
+
+output$heritage_chart <- renderPlotly({
+  
+  #TODO: only count mesh blocks that are predominately zoned residential
+  
+  data <- reweighted_data() %>%
+    st_drop_geometry() %>%
+    arrange(-total_score) %>%
+    slice_head(n = input$top_n) %>%
+    select(MB_CODE21, total_score) %>%
+    left_join(heritage_information, by = c('MB_CODE21' = 'MB_CODE21')) %>%
+    st_drop_geometry()
+  
+  data = data.frame(type = c('Under heritage overlay', 'Not under heritage overlay'), value = c(sum(data$total_ho_area), sum(data$not_covered_by_overlay)))
+  
+  p <- (ggplot(data, aes(x = reorder(type, value), y = value,
+                        text = paste0(type, "<br>Percent: ", round(value, 2)))) +
+    geom_col(fill = "#61afef") +
+    labs(x = NULL, y = "Percent of top MBs") +
+    theme_terminal() +
+    coord_flip()) %>% 
+    ggplotly()
+
+  apply_plotly_theme(p) %>%
+    layout(hovermode = "closest") %>%
+    style(hoverinfo = "text")
 })
 
 ```
