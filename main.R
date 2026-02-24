@@ -88,7 +88,7 @@ mb_employment_dict <<- employment_mb()
 test <<- find_starting_indices()
 master_amenity_dt <<- create_master_amenity_mb_dict()
 
-all_results <<- dijkstra_transit_routing()
+all_results <<- dijkstra_transit_routing(doParallel, num_cores)
 
 package_final_sf()
 
