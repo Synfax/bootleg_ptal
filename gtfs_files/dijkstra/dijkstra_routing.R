@@ -189,81 +189,73 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
   message("Running BFS + post-processing for ", length(starting_indices), " starting vertices...")
   tic()
 
+  # Worker function: returns plain list (not data.table) to avoid rbindlist overhead
+  process_vertex <- function(start_index) {
+    result <- run_bfs(start_index)
+
+    bfs_dt <- data.table(
+      stop_id = unique_stops[result$stop_numeric],
+      time_remaining = result$time_remaining
+    )
+    setkey(bfs_dt, stop_id)
+
+    # Walking join: ~870 stops × ~41 MBs = ~36k rows
+    destinations <- walking_access_dict[bfs_dt, on = 'stop_id', nomatch = NULL, allow.cartesian = TRUE][
+      walking_time <= time_remaining
+    ]
+
+    if(nrow(destinations) == 0L) return(NULL)
+
+    destinations[, time_remaining_incl_walking := time_remaining - walking_time]
+
+    # Dedup: keep best arrival per MB
+    setorder(destinations, MB_CODE21, -time_remaining_incl_walking)
+    final <- unique(destinations, by = 'MB_CODE21')
+
+    # Join amenities and sum in one pass
+    with_amenities <- master_amenity_dt[final, on = 'MB_CODE21', nomatch = NULL]
+
+    list(
+      start_vertex_index = start_index,
+      amenity_sums = colSums(with_amenities[, ..amenity_cols], na.rm = TRUE),
+      mb_codes = as.character(final$MB_CODE21),
+      travel_times = final$time_remaining_incl_walking
+    )
+  }
+
   if(doParallel) {
     cl <- makeCluster(num_cores, type = "FORK")
     message('FORK cluster established with ', num_cores, ' workers')
-
-    all_results <- rbindlist(parLapplyLB(cl = cl, X = starting_indices, fun = function(start_index) {
-
-        # BFS: returns ~870 (stop_numeric, time_remaining) pairs
-        result <- run_bfs(start_index)
-
-        bfs_dt <- data.table(
-          stop_id = unique_stops[result$stop_numeric],
-          time_remaining = result$time_remaining
-        )
-        setkey(bfs_dt, stop_id)
-
-        # Walking join: ~870 stops × ~41 MBs = ~36k rows
-        destinations <- walking_access_dict[bfs_dt, on = 'stop_id', nomatch = NULL, allow.cartesian = TRUE][
-          walking_time <= time_remaining
-        ]
-
-        if(nrow(destinations) == 0L) return(NULL)
-
-        destinations[, time_remaining_incl_walking := time_remaining - walking_time]
-
-        # Dedup: keep best arrival per MB
-        setorder(destinations, MB_CODE21, -time_remaining_incl_walking)
-        final <- unique(destinations, by = 'MB_CODE21')
-
-        # Join amenities and sum in one pass
-        with_amenities <- master_amenity_dt[final, on = 'MB_CODE21', nomatch = NULL]
-
-        data.table(
-          start_vertex_index = start_index,
-          as.list(colSums(with_amenities[, ..amenity_cols], na.rm = TRUE)),
-          mesh_block_list = list(as.character(final$MB_CODE21)),
-          travel_times = list(final$time_remaining_incl_walking)
-        )
-
-    }))
-
+    results_list <- parLapplyLB(cl = cl, X = starting_indices, fun = process_vertex, chunk.size = 10)
     stopCluster(cl)
     gc()
   } else {
-    all_results <- rbindlist(lapply(starting_indices, function(start_index) {
-
-        result <- run_bfs(start_index)
-
-        bfs_dt <- data.table(
-          stop_id = unique_stops[result$stop_numeric],
-          time_remaining = result$time_remaining
-        )
-        setkey(bfs_dt, stop_id)
-
-        destinations <- walking_access_dict[bfs_dt, on = 'stop_id', nomatch = NULL, allow.cartesian = TRUE][
-          walking_time <= time_remaining
-        ]
-
-        if(nrow(destinations) == 0L) return(NULL)
-
-        destinations[, time_remaining_incl_walking := time_remaining - walking_time]
-
-        setorder(destinations, MB_CODE21, -time_remaining_incl_walking)
-        final <- unique(destinations, by = 'MB_CODE21')
-
-        with_amenities <- master_amenity_dt[final, on = 'MB_CODE21', nomatch = NULL]
-
-        data.table(
-          start_vertex_index = start_index,
-          as.list(colSums(with_amenities[, ..amenity_cols], na.rm = TRUE)),
-          mesh_block_list = list(as.character(final$MB_CODE21)),
-          travel_times = list(final$time_remaining_incl_walking)
-        )
-
-    }))
+    results_list <- lapply(starting_indices, process_vertex)
   }
+
+  # Filter NULLs and assemble into data.table from pre-allocated vectors
+  results_list <- results_list[!vapply(results_list, is.null, logical(1))]
+  n <- length(results_list)
+
+  start_vertex_vec <- integer(n)
+  amenity_matrix <- matrix(0, nrow = n, ncol = length(amenity_cols), dimnames = list(NULL, amenity_cols))
+  mb_list <- vector("list", n)
+  tt_list <- vector("list", n)
+
+  for(i in seq_len(n)) {
+    r <- results_list[[i]]
+    start_vertex_vec[i] <- r$start_vertex_index
+    amenity_matrix[i, ] <- r$amenity_sums
+    mb_list[[i]] <- r$mb_codes
+    tt_list[[i]] <- r$travel_times
+  }
+
+  all_results <- data.table(
+    start_vertex_index = start_vertex_vec,
+    as.data.table(amenity_matrix),
+    mesh_block_list = mb_list,
+    travel_times = tt_list
+  )
 
   all_results[, stop_id := vertex_stop_ids[start_vertex_index]]
 
