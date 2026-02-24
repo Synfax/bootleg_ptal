@@ -142,25 +142,41 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
   }
 
   # =============================================================================
-  # STEP 4: Process starting stops
+  # STEP 4: Build walking access CSR + amenity matrix for C++
   # =============================================================================
 
-  # Find starting vertex indices (stops at max_time)
+  amenity_cols <- setdiff(names(master_amenity_dt), 'MB_CODE21')
 
+  # MB numeric mapping
+  all_mbs <- unique(walking_access_dict$MB_CODE21)
+  mb_to_numeric <- setNames(seq_along(all_mbs), all_mbs)
+  cpp_n_mbs <- as.integer(length(all_mbs))
 
+  # Walking access CSR keyed by stop_numeric
+  walk_dt <- walking_access_dict[, .(
+    stop_numeric = stop_to_numeric[stop_id],
+    mb_numeric = mb_to_numeric[MB_CODE21],
+    walking_time
+  )]
+  walk_dt <- walk_dt[!is.na(stop_numeric)]
+  setorder(walk_dt, stop_numeric)
 
+  cpp_walk_offsets <- as.integer(c(0L, cumsum(tabulate(walk_dt$stop_numeric, nbins = length(unique_stops)))))
+  cpp_walk_mb <- as.integer(walk_dt$mb_numeric - 1L)
+  cpp_walk_time <- as.numeric(walk_dt$walking_time)
 
-  #this is the start point logic - currently selects the earliest time at each stop
-  # vertex_metadata %>%
-  #   as.data.frame() %>%
-  #   group_by(stop_id) %>%
-  #   slice_max(time_remaining) %>%
-  #   mutate(starting_vertex_names = paste0(stop_id,'_',time_remaining)) -> starting_vertices
+  # Amenity matrix (rows = mb_numeric order, cols = amenity_cols)
+  amenity_lookup_dt <- data.table(MB_CODE21 = all_mbs, mb_idx = seq_along(all_mbs))
+  amenity_joined <- master_amenity_dt[amenity_lookup_dt, on = 'MB_CODE21']
+  setorder(amenity_joined, mb_idx)
+  cpp_amenity_matrix <- as.matrix(amenity_joined[, ..amenity_cols])
+  cpp_amenity_matrix[is.na(cpp_amenity_matrix)] <- 0
 
-  # starting_vertices = start_points %>%
-  #   as.data.frame() %>%
-  #   mutate(starting_vertex_names = paste0(stop_id,'_',time)) %>%
-  #   pull(starting_vertex_names)
+  message("Built walking CSR (", length(cpp_walk_mb), " entries) and amenity matrix (", cpp_n_mbs, " MBs x ", length(amenity_cols), " cols)")
+
+  # =============================================================================
+  # STEP 5: Find starting vertices
+  # =============================================================================
 
   starting_vertices = fake_start_pairs %>%
       as.data.frame() %>%
@@ -175,51 +191,43 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
     stop("No valid starting vertices found")
   }
   start_time <- Sys.time()
-  message("Starting Dijkstra from ", length(starting_indices), " vertices")
+  message("Starting BFS from ", length(starting_indices), " vertices")
 
   starting_indices = starting_indices[sample(length(starting_indices), length(starting_indices))]
 
   # =============================================================================
-  # STEP 4: BFS + post-processing per starting vertex
+  # STEP 6: BFS + post-processing per starting vertex (all in C++)
   # =============================================================================
-
-  amenity_cols <- setdiff(names(master_amenity_dt), 'MB_CODE21')
-  setkey(walking_access_dict, stop_id)
 
   message("Running BFS + post-processing for ", length(starting_indices), " starting vertices...")
   tic()
 
-  # Worker function: returns plain list (not data.table) to avoid rbindlist overhead
+  # Worker function: BFS + walking join + amenity sum all in C++
   process_vertex <- function(start_index) {
-    result <- run_bfs(start_index)
-
-    bfs_dt <- data.table(
-      stop_id = unique_stops[result$stop_numeric],
-      time_remaining = result$time_remaining
+    result <- bfs_with_post_processing(
+      start_vertex_index = start_index - 1L,
+      n_vertices = cpp_n_vertices,
+      n_stops = cpp_n_stops,
+      vertex_time_remaining = vertex_time_remaining,
+      vertex_stop_numeric = cpp_vertex_stop_numeric,
+      max_time = max_time,
+      adj_offsets = cpp_adj_offsets,
+      adj_dest = cpp_adj_dest,
+      adj_margin = adj_margin,
+      walk_offsets = cpp_walk_offsets,
+      walk_mb_numeric = cpp_walk_mb,
+      walk_time = cpp_walk_time,
+      amenity_matrix = cpp_amenity_matrix,
+      n_mbs = cpp_n_mbs
     )
-    setkey(bfs_dt, stop_id)
 
-    # Walking join: ~870 stops × ~41 MBs = ~36k rows
-    destinations <- walking_access_dict[bfs_dt, on = 'stop_id', nomatch = NULL, allow.cartesian = TRUE][
-      walking_time <= time_remaining
-    ]
-
-    if(nrow(destinations) == 0L) return(NULL)
-
-    destinations[, time_remaining_incl_walking := time_remaining - walking_time]
-
-    # Dedup: keep best arrival per MB
-    setorder(destinations, MB_CODE21, -time_remaining_incl_walking)
-    final <- unique(destinations, by = 'MB_CODE21')
-
-    # Join amenities and sum in one pass
-    with_amenities <- master_amenity_dt[final, on = 'MB_CODE21', nomatch = NULL]
+    if(length(result$mb_numeric) == 0L) return(NULL)
 
     list(
       start_vertex_index = start_index,
-      amenity_sums = colSums(with_amenities[, ..amenity_cols], na.rm = TRUE),
-      mb_codes = as.character(final$MB_CODE21),
-      travel_times = final$time_remaining_incl_walking
+      amenity_sums = result$amenity_sums,
+      mb_codes = all_mbs[result$mb_numeric],
+      travel_times = result$travel_times
     )
   }
 
