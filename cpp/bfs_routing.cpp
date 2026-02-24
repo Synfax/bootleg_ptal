@@ -4,7 +4,7 @@
 using namespace Rcpp;
 
 // [[Rcpp::export]]
-IntegerVector bfs_pruned(
+List bfs_pruned(
     int start_vertex_index,       // 0-indexed (R subtracts 1 before calling)
     int n_vertices,
     int n_stops,
@@ -15,8 +15,7 @@ IntegerVector bfs_pruned(
     IntegerVector adj_dest,       // 0-indexed
     NumericVector adj_margin
 ) {
-  // this is what we will return in the end
-  std::vector<int> reachable_stops;
+
 
   // define tracking arrays
   std::vector<bool> visited(n_vertices, false); // if we have visited something
@@ -72,14 +71,30 @@ IntegerVector bfs_pruned(
   }
 
   // collect visited vertices and convert back to 1-indexed for R
-  for(int i = 0; i < n_vertices; i++) {
+  // for(int i = 0; i < n_vertices; i++) {
+  //
+  //   if(visited[i]) {
+  //     reachable_stops.push_back(i + 1);  // +1 to return 1-indexed to R
+  //   }
+  //
+  // }
 
-    if(visited[i]) {
-      reachable_stops.push_back(i + 1);  // +1 to return 1-indexed to R
+
+  std::vector<int> stop_indices;
+  std::vector<double> stop_times;
+
+  for(int i = 0; i < n_stops; i++) {
+
+    if(best_time_per_stop[i] > 0) {
+      stop_indices.push_back(i + 1);
+      stop_times.push_back(best_time_per_stop[i]);
     }
 
   }
 
-  return(Rcpp::wrap(reachable_stops));
+  return List::create(
+    Named("stop_numeric") = stop_indices,
+    Named("time_remaining") = stop_times
+  );
 
 }
