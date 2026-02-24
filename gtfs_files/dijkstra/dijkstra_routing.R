@@ -86,6 +86,18 @@ dijkstra_transit_routing <- function() {
   # Convert adjacency list to use numeric stop indices for faster lookup
   edges_dt[, source_stop_numeric := stop_to_numeric[source_stop_id]]
 
+  #CSR logic
+
+  setorder(edges_dt, source_stop_numeric)
+
+  {
+    adj_dest = edges_dt$dest_vertex_index
+    adj_margin = edges_dt$time_margin
+
+    adj_offsets <- tabulate(edges_dt$source_stop_numeric, nbins = length(unique_stops))
+    adj_offsets <- c(1, cumsum(adj_offsets) + 1)
+  }
+
   # Create proper numeric-indexed adjacency list (array of data.tables)
   adjacency_list <- vector("list", length(unique_stops))
 
@@ -100,7 +112,7 @@ dijkstra_transit_routing <- function() {
       adjacency_list[[i]] <- data.table()  # Empty data.table for stops with no edges
     }
   }
-
+  Rcpp::sourceCpp('cpp/bfs_routing.cpp')
   message("Created adjacency list for ", length(adjacency_list), " stops")
 
 
@@ -108,11 +120,13 @@ dijkstra_transit_routing <- function() {
   # STEP 3: Dijkstra with time-expanded vertices and stop-based adjacency
   # =============================================================================
 
-  dijkstra_with_pruning <- function(start_vertex_index) {
+  dijkstra_with_pruning <- function(start_vertex_index, method = 'cpp') {
 
     #print(start_vertex_index)
 
-    #profvis({
+    if(method == 'r') {
+
+      # START MASS COMMENT ---
 
       num_vertices <- max(vertex_metadata$vertex_index)
 
@@ -140,7 +154,7 @@ dijkstra_transit_routing <- function() {
         if(visited[current_index]) next
 
         # Get current vertex info using O(1) array access (no data.table lookup!)
-        current_stop <- vertex_stop_ids[current_index]
+        #current_stop <- vertex_stop_ids[current_index] #not used
         current_time_remaining <- vertex_time_remaining[current_index]
         current_elapsed_time <- max_time - current_time_remaining
 
@@ -191,6 +205,24 @@ dijkstra_transit_routing <- function() {
 
       # Return all visited vertices
       reachable_indices <- which(visited)
+
+      # END MASS COMMENT
+
+    }
+
+    if(method == 'cpp') {
+      reachable_indices = bfs_pruned(
+        start_vertex_index = start_vertex_index - 1L,
+        n_vertices = as.integer(max(vertex_metadata$vertex_index)),
+        n_stops = as.integer(length(unique_stops)),
+        vertex_time_remaining = vertex_time_remaining,
+        vertex_stop_numeric = as.integer(vertex_stop_numeric - 1L),
+        max_time = max_time,
+        adj_offsets = as.integer(adj_offsets - 1L),
+        adj_dest = as.integer(adj_dest - 1L),
+        adj_margin = adj_margin
+      )
+    }
 
       result <- data.table(
         vertex_index = reachable_indices
@@ -282,7 +314,7 @@ dijkstra_transit_routing <- function() {
 
   # Run Dijkstra for each starting point
   all_results <- rbindlist(lapply(starting_indices, function(start_index) {
-    result <- dijkstra_with_pruning(start_index)
+    result <- dijkstra_with_pruning(start_index, method = 'cpp')
     result[, start_vertex_index := start_index]
     return(result)
   }))
@@ -294,3 +326,27 @@ dijkstra_transit_routing <- function() {
 
   return(all_results)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
