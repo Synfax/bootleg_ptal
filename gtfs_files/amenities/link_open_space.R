@@ -2,11 +2,17 @@ link_open_space <- function(mb_sf) {
 
   #load mb sf
 
-  #use osmdata to pull open space
-  open_space <- opq(bbox = getbb("Melbourne, Victoria, Australia")) %>%
-    add_osm_feature(key = "leisure",
-                    value = c("park", "nature_reserve", "recreation_ground", "garden")) %>%
-    osmdata_sf()
+  #use osmdata to pull open space (cached to avoid repeated API calls)
+  cache_path <- 'rdata_output/osm_open_space.qs'
+  if(file.exists(cache_path)) {
+    open_space <- qs::qread(cache_path)
+  } else {
+    open_space <- opq(bbox = getbb("Melbourne, Victoria, Australia")) %>%
+      add_osm_feature(key = "leisure",
+                      value = c("park", "nature_reserve", "recreation_ground", "garden")) %>%
+      osmdata_sf()
+    qs::qsave(open_space, cache_path)
+  }
 
   #we only want the polygons - we can ignore the large multipolygons, points and lines
   open_space_polygons <- open_space$osm_polygons %>%

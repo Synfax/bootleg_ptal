@@ -1,8 +1,6 @@
-employment_mb <- function(mb_sf, dzns_sf) {
+employment_mb <- function(mb_sf) {
 
-  mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
-    filter(GCC_NAME21 == 'Greater Melbourne') %>%
-    st_transform(7855) %>%
+  mb_sf <- mb_sf %>%
     select(MB_CODE21)
 
   dzns_sf <- read_sf('sf_output/dzns_sf.shp') %>%

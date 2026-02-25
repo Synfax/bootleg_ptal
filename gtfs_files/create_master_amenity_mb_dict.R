@@ -1,11 +1,9 @@
-create_master_amenity_mb_dict <- function() {
-  mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
-    filter(GCC_NAME21 == 'Greater Melbourne') %>%
-    st_transform(7855) %>%
+create_master_amenity_mb_dict <- function(mb_sf) {
+  mb_sf <- mb_sf %>%
     select(MB_CODE21, MB_CAT21) %>%
     mutate(area = st_area(geometry))
 
-  jobs = employment_mb() %>%
+  jobs = employment_mb(mb_sf) %>%
     st_drop_geometry() %>%
     as.data.frame() %>%
     select(-geometry)

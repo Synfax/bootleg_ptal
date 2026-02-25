@@ -232,11 +232,8 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
   }
 
   if(doParallel) {
-    cl <- makeCluster(num_cores, type = "FORK")
-    message('FORK cluster established with ', num_cores, ' workers')
-    results_list <- parLapplyLB(cl = cl, X = starting_indices, fun = process_vertex, chunk.size = 10)
-    stopCluster(cl)
-    gc()
+    message('Running mclapply with ', num_cores, ' cores')
+    results_list <- mclapply(starting_indices, process_vertex, mc.cores = num_cores)
   } else {
     results_list <- lapply(starting_indices, process_vertex)
   }

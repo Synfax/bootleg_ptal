@@ -1,16 +1,9 @@
-get_master_mb_ufi <- function() {
+get_master_mb_ufi <- function(mb_sf) {
 
   #this creates a dictionary which links mesh block MB_CODE21 to walking UFIs
 
-  #it has a problem that it sometimes uses minor asf roads. trying new version
-
-  #TODO: link properly
-  mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
-    filter(GCC_NAME21 == 'Greater Melbourne')
-
   mb_centroids <- st_centroid(mb_sf) %>%
-    select(MB_CODE21) %>%
-    st_transform(7855)
+    select(MB_CODE21)
 
   #TODO: link properly
   tr_road_infra <- read_sf('sf_input/tr_road_infrastructure/Order_08APF2/mga2020_55/esrishape/customised_delivery/MELBOURNE_WATER-0/VMTRANS/TR_ROAD_INFRASTRUCTURE.shp')

@@ -1,19 +1,10 @@
-link_walk_stops <- function(){
+link_walk_stops <- function(all_walk_raw){
 
   #this is for the final stage of the isochrone calculation
   #from all the transit stops I can reach, where are the final walking UFIs I can get to.
 
-  walking_files <- list.files('walking_isochrones_sa2/')
-
-  walking_files %>% map_dfr(.f = function(file){
-    fread(paste0('walking_isochrones_sa2/',file))
-  }) -> all_walk
-
-  #make large dt of all walking connections (ALL UFIs)
-  all_walk[, start_UFI := as.character(start_UFI)]
-
   #left join with master_mb_ufi to only show rows where a UFI is a MB
-  all_walk = all_walk[master_mb_ufi, on = 'UFI', nomatch = NULL]
+  all_walk <- all_walk_raw[master_mb_ufi, on = 'UFI', nomatch = NULL]
 
   #filter all walk to only those that are equivalent to centroid of mesh blocks
 

@@ -1,23 +1,10 @@
-find_starting_indices <- function() {
-
-
-  #this is so busted
+find_starting_indices <- function(all_walk_raw) {
 
   #sources <- unique(place_registry[, .(boarding_stop_name, mins_left_at_dep_time)])
 
-
-  #TODO: place all_walk reading into a separate function to reduce duplicative calls
-  list.files('walking_isochrones_sa2/') %>%
-        map_dfr(.f = function(file){
-        fread(paste0('walking_isochrones_sa2/',file))
-      }) -> all_walk
-
-  #make large dt of all walking connections (ALL UFIs)
-  all_walk[, UFI := as.character(UFI)]
-  setkey(all_walk, UFI)
   setkey(transit_ufi_dict, nearest_UFI)
 
-  all_walk = all_walk[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
+  all_walk <- all_walk_raw[transit_ufi_dict, on = c('UFI' = 'nearest_UFI'), nomatch = NULL]
   all_walk = all_walk[!str_detect(stop_id, 'vic')]
   #begin test
 

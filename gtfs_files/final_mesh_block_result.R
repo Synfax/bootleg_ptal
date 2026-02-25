@@ -1,4 +1,4 @@
-package_final_sf <- function() {
+package_final_sf <- function(mb_sf) {
 
   all_res <- copy(all_results)
   all_res[, name := names(vertex_to_index[start_vertex_index]) ]
@@ -22,14 +22,9 @@ package_final_sf <- function() {
     select(!c(mesh_block_list, travel_times)) %>%
     mutate(jobs = round(jobs,2)) %>%
     mutate(across(!mb_code21, ~percent_rank(.x))) %>%
-    rowwise() %>%
-    mutate(total_score = sum(across(!mb_code21)), MB_CODE21 = mb_code21)
+    mutate(total_score = rowSums(across(!mb_code21)), MB_CODE21 = mb_code21)
 
   qs::qsave(trimmed_scores, 'qs/trimmed_scores.qs')
-
-  mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
-    filter(GCC_NAME21 == 'Greater Melbourne') %>%
-    st_transform(7855)
 
   final_result <- trimmed_scores %>%
     select(!mb_code21) %>%

@@ -3,16 +3,21 @@ link_supermarkets <- function(mb_sf) {
   #load mb sf
 
 
-  supermarkets <- opq(bbox = getbb("Melbourne, Victoria, Australia")) %>%
-    add_osm_feature(key = "shop",
-                    value = c("supermarket", "greengrocer", "grocery")) %>%
-    osmdata_sf()
+  #cached to avoid repeated API calls
+  cache_path <- 'rdata_output/osm_supermarkets.qs'
+  if(file.exists(cache_path)) {
+    supermarkets <- qs::qread(cache_path)
+  } else {
+    supermarkets <- opq(bbox = getbb("Melbourne, Victoria, Australia")) %>%
+      add_osm_feature(key = "shop",
+                      value = c("supermarket", "greengrocer", "grocery")) %>%
+      osmdata_sf()
+    qs::qsave(supermarkets, cache_path)
+  }
 
   # Handle points vs polygons
   polygons <- supermarkets$osm_polygons
   points <- supermarkets$osm_points
-
-  points %>% mapgl::maplibre_view()
 
   #where polygons have points within them - remove the polygon but only keep the centroid point.
 
@@ -46,8 +51,6 @@ link_supermarkets <- function(mb_sf) {
     select(osm_id, name) %>%
     st_transform(7855) %>%
     mutate(geom_type = st_geometry_type(geometry))
-
-  mapgl::maplibre_view(all_supermarkets)
 
   #link mesh blocks to specific supermarkets
   supermarket_mb_intersection <- st_intersection(mb_sf, all_supermarkets)

@@ -1,0 +1,12 @@
+initialise_gtfs: 16.116 sec elapsed
+get_transit_ufi_dict: 0.017 sec elapsed
+calculate_walking_distances: 1.413 sec elapsed
+generate_place_registry: 168.449 sec elapsed
+get_master_mb_ufi: 13.326 sec elapsed
+link_walk_stops: 13.33 sec elapsed
+employment_mb: 14.649 sec elapsed
+find_starting_indices: 16.234 sec elapsed
+create_master_amenity_mb_dict: 57.338 sec elapsed
+Total pipeline: 25.617 sec elapsed
+package_final_sf: 51.871 sec elapsed
+378.378 sec elapsed
