@@ -10,3 +10,7 @@ create_master_amenity_mb_dict: 57.338 sec elapsed
 Total pipeline: 25.617 sec elapsed
 package_final_sf: 51.871 sec elapsed
 378.378 sec elapsed
+
+
+ nrow(place_registry)
+[1] 5994476

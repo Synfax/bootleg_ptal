@@ -1,38 +1,44 @@
 package_final_sf <- function(mb_sf) {
 
-  all_res <- copy(all_results)
-  all_res[, name := names(vertex_to_index[start_vertex_index]) ]
+  profvis({
 
-  #from find_starting_indices
-  starting_index_df <- test[,.(MB_CODE21, stop_id, walking_time)]
-  starting_index_df[, time := max_time - walking_time]
-  starting_index_df[, name := paste0(stop_id, '_', time)]
+    all_res <- copy(all_results)
+    all_res[, name := names(vertex_to_index[start_vertex_index]) ]
 
-  final_result_dt <- starting_index_df[all_res, on = c('name'), nomatch = NULL]
-  colnames(final_result_dt) <- janitor::make_clean_names(colnames(final_result_dt))
+    #from find_starting_indices
+    starting_index_df <- test[,.(MB_CODE21, stop_id, walking_time)]
+    starting_index_df[, time := max_time - walking_time]
+    starting_index_df[, name := paste0(stop_id, '_', time)]
 
-  #summary(final_result_dt[,.(total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)])
+    final_result_dt <- starting_index_df[all_res, on = c('name'), nomatch = NULL]
+    colnames(final_result_dt) <- janitor::make_clean_names(colnames(final_result_dt))
 
-  trimmed_results = final_result_dt[,.(mb_code21, mesh_block_list,travel_times, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
-    as.data.frame()
+    #summary(final_result_dt[,.(total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)])
 
-  qs::qsave(trimmed_results, 'qs/trimmed_results.qs')
+    trimmed_results = final_result_dt[,.(mb_code21, mesh_block_list,travel_times, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
+      as.data.frame()
 
-  trimmed_scores <- trimmed_results %>%
-    select(!c(mesh_block_list, travel_times)) %>%
-    mutate(jobs = round(jobs,2)) %>%
-    mutate(across(!mb_code21, ~percent_rank(.x))) %>%
-    mutate(total_score = rowSums(across(!mb_code21)), MB_CODE21 = mb_code21)
+    qs::qsave(trimmed_results, 'qs/trimmed_results.qs')
 
-  qs::qsave(trimmed_scores, 'qs/trimmed_scores.qs')
+    trimmed_scores <- trimmed_results %>%
+      select(!c(mesh_block_list, travel_times)) %>%
+      mutate(jobs = round(jobs,2)) %>%
+      mutate(across(!mb_code21, ~percent_rank(.x))) %>%
+      mutate(total_score = rowSums(across(!mb_code21)), MB_CODE21 = mb_code21)
 
-  final_result <- trimmed_scores %>%
-    select(!mb_code21) %>%
-    left_join(mb_sf, by = 'MB_CODE21')
+    qs::qsave(trimmed_scores, 'qs/trimmed_scores.qs')
 
-  write_sf(final_result, 'sf_output/final_result.gpkg', append = F)
+    final_result <- trimmed_scores %>%
+      select(!mb_code21) %>%
+      left_join(mb_sf, by = 'MB_CODE21')
 
-  return(final_result)
+    write_sf(final_result, 'sf_output/final_result.gpkg', append = F)
+
+    return(final_result)
+
+  })
+
+
 
   # mb_test <- mb_sf %>%
   #   filter(MB_CODE21 %in% mesh_blocks)

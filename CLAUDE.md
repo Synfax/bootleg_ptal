@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This R project implements a PTAL-inspired (Public Transport Accessibility Level) multi-amenity accessibility index for Greater Melbourne, Australia. It calculates accessibility to employment, open space, supermarkets, and various community facilities (education, healthcare, childcare, sports) from residential mesh blocks using time-dependent public transport routing combined with walking network analysis.
 
-The system uses a time-expanded graph with BFS and temporal dominance pruning to model realistic public transport journeys, accounting for departure times, walking transfers, and walking connections at both ends of the journey.
+The system uses a time-expanded graph with BFS and temporal dominance pruning (C++ via Rcpp) to model realistic public transport journeys, accounting for departure times, walking transfers, and walking connections at both ends of the journey.
 
 ## Temporal Logic (Critical)
 
@@ -62,7 +62,7 @@ When `source('main.R')` is run, the following pipeline executes in order:
 8. **Employment per Mesh Block** (`employment_mb.R`): Spatially intersects mesh blocks with destination zones, allocates employment proportionally by overlap area
 9. **Starting Indices** (`find_starting_indices.R`): For each mesh block, finds the best transit stop to walk to as a journey starting point. Joins MB centroids → walking network → transit stops → place registry vertices, filtered for temporal feasibility, picking the option with the most time remaining per mesh block
 10. **Amenity Dictionary** (`create_master_amenity_mb_dict.R`): Sources all amenity scripts, joins employment + open space + supermarkets + VicMap FOI data into a single data.table keyed by MB_CODE21
-11. **Dijkstra Routing** (`dijkstra/dijkstra_routing.R`): Builds the time-expanded graph, runs BFS with temporal dominance pruning from each starting vertex, collects reachable mesh blocks and sums their amenities
+11. **Dijkstra Routing** (`dijkstra/dijkstra_routing.R`): Builds the time-expanded graph in R, flattens to CSR format, runs Dijkstra (C++ via Rcpp, `cpp/bfs_routing.cpp`) from each starting vertex, then does per-vertex walking joins and amenity summation in R
 12. **Package Results** (`final_mesh_block_result.R`): Links routing results back to origin mesh blocks, computes percentile ranks per amenity, sums into `total_score`, writes GeoPackage
 
 ### Walking Network (`gtfs_files/real_walking_distances.R`)
@@ -93,41 +93,69 @@ Builds the transit connection graph. For each transit stop (`source_stop_id`):
 
 ### Time-Expanded Graph Routing (`gtfs_files/dijkstra/dijkstra_routing.R`)
 
-#### Step 1: Build Vertices
+The routing is split between R (data wrangling, graph construction) and C++ via Rcpp (graph traversal).
+
+#### Step 1: Build Vertices (R)
 
 Vertices are `(stop_id, time_remaining)` pairs, drawn from three sources:
 - Source pairs: `(source_stop_id, mins_left_at_dep_time)` from place registry
 - Destination pairs: `(stop_id, minutes_until_time_limit)` from place registry
 - Fake start pairs: `(stop_id, 46 - walking_time)` from `find_starting_indices` — these represent the time budget a person has after walking from their mesh block to the nearest transit stop
 
-Each vertex gets a numeric index. Vertex metadata is stored in pre-allocated arrays for O(1) access in the hot loop.
+Each vertex gets a numeric index. Vertex metadata is stored in pre-allocated arrays for O(1) access: `vertex_stop_ids`, `vertex_time_remaining`, `vertex_stop_numeric`.
 
-#### Step 2: Build Adjacency List
+#### Step 2: Build Edges + CSR Format (R)
 
-Edges are grouped by `source_stop_id` (using numeric stop indices). Each edge stores:
-- `dest_vertex_index`: pre-computed numeric index of the destination vertex
-- `time_margin`: the temporal slack (computed in place registry)
-- `travel_time`: `mins_left_at_dep_time - minutes_until_time_limit`
+Edges from `place_registry` are sorted by `source_stop_numeric` and flattened into **CSR (Compressed Sparse Row)** format — three parallel vectors that C++ can consume efficiently:
+- `adj_offsets`: integer vector of length `(n_stops + 1)`. Edges for stop `i` are at positions `adj_offsets[i]` to `adj_offsets[i+1] - 1`
+- `adj_dest`: integer vector — all `dest_vertex_index` values concatenated
+- `adj_margin`: numeric vector — all `time_margin` values concatenated
 
-#### Step 3: BFS with Temporal Dominance Pruning
+Built via `setorder(edges_dt, source_stop_numeric)` → `tabulate()` → `cumsum()`. All indices are converted to 0-based before passing to C++.
 
-For each starting vertex (one per mesh block's assigned transit stop):
+#### Step 3: BFS Traversal (C++ — `cpp/bfs_routing.cpp`)
 
-1. Initialise a FIFO queue with the starting vertex
-2. Process vertices in queue order:
-   - Compute `current_elapsed_time = 46 - current_time_remaining`
-   - **Temporal dominance check**: if this stop was already visited with ≥ time remaining, skip (a previous visit dominates)
-   - For each outgoing edge: check `time_margin >= current_elapsed_time` ← **this is where the two clocks meet**
-   - Add valid, unvisited destination vertices to the queue
-3. After BFS completes, join all visited stops with `walking_access_dict` to find mesh blocks walkable from each reached transit stop, filtering `walking_time <= time_remaining`
-4. For each reachable mesh block, keep the visit with the most `time_remaining_incl_walking` (= `time_remaining - walking_time`)
-5. Sum all amenities across reachable mesh blocks
+The core graph traversal is implemented in C++ via `Rcpp::sourceCpp()`.
 
-**Note**: This is BFS with pruning, not classical Dijkstra — it uses a FIFO queue rather than a priority queue. The temporal dominance pruning (`best_time_per_stop`) provides correctness: if you reach a stop with more time remaining, all subsequent connections from that stop are strictly better than reaching it with less time.
+**Algorithm** (`bfs_pruned` function):
+1. Initialise a FIFO queue (pre-allocated `std::vector<int>` with head/tail pointers) — O(1) push/pop
+2. Push the starting vertex; track queued vertices with `std::vector<bool>` to prevent duplicate entries
+3. Process vertices in FIFO order:
+   - Skip if already visited
+   - Compute `current_elapsed_time = max_time - current_time_remaining`
+   - **Temporal dominance**: if `best_time_per_stop[stop] >= current_time_remaining`, skip — a previous visit to this stop had more time budget
+   - For each outgoing edge (CSR iteration): if `time_margin >= current_elapsed_time`, push unqueued destination vertex
+4. Return deduplicated results: one `(stop_numeric, time_remaining)` pair per visited stop
 
-#### Step 4: Process All Starting Points
+**Why FIFO over priority queue**: Tested `std::priority_queue` (proper Dijkstra) — it was slower (8 min vs 5 min) due to O(log n) heap operations and duplicate entries. The FIFO queue with temporal dominance pruning is correct and faster for this graph structure.
 
-Starting vertices are shuffled and processed sequentially via `lapply`. Each result includes summed amenities, the list of reachable mesh blocks, and remaining travel times.
+**0-indexing boundary**: R subtracts 1 from all index inputs before calling C++. C++ is fully 0-indexed internally. Return values add 1 for R (`stop_indices.push_back(i + 1)`).
+
+**Function signature**:
+```cpp
+List bfs_pruned(
+    int start_vertex_index,       // 0-indexed
+    int n_vertices, int n_stops,
+    NumericVector vertex_time_remaining,
+    IntegerVector vertex_stop_numeric,   // 0-indexed
+    double max_time,
+    IntegerVector adj_offsets,    // 0-indexed CSR offsets
+    IntegerVector adj_dest,       // 0-indexed CSR destinations
+    NumericVector adj_margin      // CSR time margins
+)
+// Returns: List with stop_numeric (1-indexed) and time_remaining vectors
+```
+
+#### Step 4: Per-Vertex Post-Processing (R)
+
+For each starting vertex (~30k total, processed sequentially via `lapply`):
+1. Call `run_bfs()` → get ~870 `(stop_id, time_remaining)` pairs
+2. Join with `walking_access_dict` → ~36k rows (each stop connects to ~41 mesh blocks)
+3. Filter `walking_time <= time_remaining` (only walkable destinations within budget)
+4. Dedup per MB: `setorder(MB_CODE21, -time_remaining_incl_walking)` + `unique(by='MB_CODE21')` — keeps best arrival per mesh block
+5. Join `master_amenity_dt` and `colSums()` amenity columns — one row per starting vertex
+
+**Performance**: ~5 minutes for full pipeline (down from ~12 minutes with pure R BFS). The C++ BFS returns deduplicated stops, avoiding the vertex-level explosion that previously caused memory issues.
 
 ### Starting Indices (`gtfs_files/find_starting_indices.R`)
 
@@ -224,7 +252,12 @@ num_cores = RAM/6GB       # Cores capped at (available_RAM / 6GB) or (total_core
 
 **Run Full Pipeline**:
 ```r
-source('main.R')
+source('main.R')  # calls Rcpp::sourceCpp('cpp/bfs_routing.cpp') internally
+```
+
+**Compile C++ Only** (for iterating on `cpp/bfs_routing.cpp`):
+```r
+Rcpp::sourceCpp('cpp/bfs_routing.cpp')
 ```
 
 **Clear Cached Isochrones**:
@@ -281,16 +314,25 @@ The pipeline uses `<<-` extensively to share state between functions:
    The walking access dictionary (`link_walk_stops`) produces a large cartesian join (transit stops × walkable mesh blocks). The place registry is also large. Pipeline benefits from 32GB+ RAM.
 
 7. **Walking Dijkstra Uses Simple Queue**:
-   The walking network Dijkstra (`real_walking_distances.R`) uses an expanding vector as a queue rather than a min-heap priority queue. Functionally correct but not optimal time complexity.
+   The walking network Dijkstra (`real_walking_distances.R`) uses an expanding vector as a queue rather than a min-heap priority queue. Functionally correct but not optimal time complexity. (The transit Dijkstra in `cpp/bfs_routing.cpp` does use a proper priority queue.)
 
 ## Dependencies
 
 **Core Packages**: `synfaxgtfs`, `tidyverse`, `data.table`, `sf`, `s2`
+**C++ Integration**: `Rcpp` (graph traversal in `cpp/bfs_routing.cpp`, compiled via `Rcpp::sourceCpp()`)
 **Parallelism**: `future`, `furrr`, `parallel`, `doParallel`
 **Spatial Data**: `osmdata`, `leaflet`
 **Utilities**: `lubridate`, `tictoc`, `janitor`, `benchmarkme`, `qs`, `profvis`
 
 The project relies on the custom `synfaxgtfs` package for GTFS data loading and filtering.
+
+### C++ Files (`cpp/`)
+
+| File | Purpose |
+|---|---|
+| `bfs_routing.cpp` | Core BFS traversal with FIFO queue and temporal dominance pruning. Takes CSR graph + vertex metadata, returns deduplicated (stop, time_remaining) pairs. Priority queue tested and reverted — slower due to O(log n) overhead. |
+| `filter_edges.cpp` | Learning exercise — returns indices where value >= threshold. Not used in pipeline. |
+| `hello.cpp` | Learning exercise — sums an integer vector. Not used in pipeline. |
 
 ## Project Type
 

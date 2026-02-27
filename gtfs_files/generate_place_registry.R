@@ -19,30 +19,26 @@ generate_place_registry <- function(doParallel, num_cores) {
   # Set up parallel processing
 
   if(doParallel) {
-    message('starting to process in parallel')
-    plan(multisession, workers = num_cores)
+    message('starting to process in parallel with ', num_cores, ' cores (FORK)')
   } else {
-    message('planning: sequential')
-    plan('sequential')
+    message('processing sequentially')
   }
 
   setkey(walking_distances, start_UFI)
 
-  message('plan established with ', nbrOfWorkers(), ' of workers')
-
   setkey(transit_ufi_dict, stop_id)
 
-  place_registry <- future_map_dfr(as.character(unique_stops), function(current_stop_id) {
-
-    #profvis({
+  process_stop <- function(current_stop_id) {
       walking_dist_key <- transit_ufi_dict[current_stop_id]$nearest_UFI
 
       #get which stops I can walk to
-      stops_to_transfer_to <- walking_distances[.(walking_dist_key)]
+      stops_to_transfer_to <- walking_distances[.(walking_dist_key), nomatch = NULL]
       stops_to_transfer_to[, destination_stop_id := stop_id]
       stops_to_transfer_to[, c('stop_id', 'UFI','stop_name', 'start_UFI') := NULL]
 
-      stops_to_transfer_to <- stops_to_transfer_to[, .SD[which.min(walking_time)], by = destination_stop_id]
+      # Change 2: setorder + unique instead of .SD[which.min()]
+      setorder(stops_to_transfer_to, destination_stop_id, walking_time)
+      stops_to_transfer_to <- unique(stops_to_transfer_to, by = 'destination_stop_id')
       stops_to_transfer_to[, time_left_after_walking := 46 -
                              walking_time]
 
@@ -63,8 +59,9 @@ generate_place_registry <- function(doParallel, num_cores) {
       departures_from_transfer_stops <- departures_from_transfer_stops[time_left_after_walking >= minutes_until_time_limit]
 
 
-      #For each trip, find the boarding stop with most time remaining (closest walkable stop)
-      departures_from_transfer_stops <- departures_from_transfer_stops[, .SD[which.max(time_left_after_walking)], by = trip_id]
+      # Change 3: setorder + unique instead of .SD[which.max()]
+      setorder(departures_from_transfer_stops, trip_id, -time_left_after_walking)
+      departures_from_transfer_stops <- unique(departures_from_transfer_stops, by = 'trip_id')
 
       #dont need to recalculate min stop sequences, its literally already present in stop_to_departures
       #now you find all the places you can get to
@@ -75,17 +72,22 @@ generate_place_registry <- function(doParallel, num_cores) {
       transfer_connections[,boarding_stop_name := stop_id_to_name[i.stop_id]]
 
       transfer_connections[, `:=`(min_stop_seq = i.stop_sequence, mins_left_at_dep_time = i.minutes_until_time_limit)][,`:=`(i.stop_id = NULL, i.minutes_until_time_limit = NULL, i.stop_sequence = NULL)]
-      transfer_connections <- transfer_connections[, .SD[stop_sequence >= min_stop_seq] , by = .(trip_id)]
+      # Change 4: vectorised filter instead of grouped .SD filter
+      transfer_connections <- transfer_connections[stop_sequence >= min_stop_seq]
       transfer_connections[,time_margin := time_left_after_walking - mins_left_at_dep_time]
 
       transfer_connections[, source_stop_id := current_stop_id]
-    #})
-
 
     return(transfer_connections)
-  }, .progress = TRUE)
+  }
 
-  plan('sequential')
+  stop_ids <- as.character(unique_stops)
+  if(doParallel) {
+    results_list <- mclapply(stop_ids, process_stop, mc.cores = num_cores)
+  } else {
+    results_list <- lapply(stop_ids, process_stop)
+  }
+  place_registry <- rbindlist(results_list)
 
   return(place_registry)
 }

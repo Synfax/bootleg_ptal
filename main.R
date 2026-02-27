@@ -137,6 +137,6 @@ toc(log = TRUE) # Total pipeline
 
 benchmark_log <- tic.log(format = TRUE)
 dir.create("benchmarks", showWarnings = FALSE)
-writeLines(unlist(benchmark_log), paste0("benchmarks/benchmark_", format(Sys.time(), "%Y-%m-%d_%H%M"), "_optimized.txt"))
+writeLines(unlist(benchmark_log), paste0("benchmarks/benchmark_", format(Sys.time(), "%Y-%m-%d_%H%M"), "_optimized_2.txt"))
 
 
