@@ -30,3 +30,4 @@ quarto/_extensions/
 _extensions/
 _extensions/*
 quarto/_extensions/*
+benchmarks/
