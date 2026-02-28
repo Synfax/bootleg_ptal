@@ -3,7 +3,7 @@ generate_place_registry <- function(doParallel, num_cores) {
 
   departures_dt <- setDT(gtfs_prefilter %>%
                            select(stop_id, trip_id, departure_time, route_id, stop_sequence) %>%
-                           mutate(minutes_until_time_limit = as.numeric(as.duration(isochrone_params$time_limit_ - hms(departure_time)), 'minutes')) %>%
+                           mutate(minutes_until_time_limit = as.numeric(as.duration(time_limit_ - hms(departure_time)), 'minutes')) %>%
                            select(-departure_time))
 
   departures_dt[, stop_id := as.character(stop_id)]
@@ -39,7 +39,7 @@ generate_place_registry <- function(doParallel, num_cores) {
       # Change 2: setorder + unique instead of .SD[which.min()]
       setorder(stops_to_transfer_to, destination_stop_id, walking_time)
       stops_to_transfer_to <- unique(stops_to_transfer_to, by = 'destination_stop_id')
-      stops_to_transfer_to[, time_left_after_walking := 46 -
+      stops_to_transfer_to[, time_left_after_walking := max_time -
                              walking_time]
 
 
@@ -50,7 +50,7 @@ generate_place_registry <- function(doParallel, num_cores) {
       departures_from_transfer_stops <- departures_from_transfer_stops[stops_to_transfer_to, on = .(stop_id = destination_stop_id)]
 
       #clean up and calculate time left after walking there
-      departures_from_transfer_stops[, time_left_after_walking := 46 - walking_time]
+      departures_from_transfer_stops[, time_left_after_walking := max_time - walking_time]
       departures_from_transfer_stops[, route_id := NULL]
 
 

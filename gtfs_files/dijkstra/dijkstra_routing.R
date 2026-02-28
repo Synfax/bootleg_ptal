@@ -13,7 +13,6 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
 
   #NEW: Logic to generate a fake start point for each stop
   #we are going to add new source pairs at mins_left_at_dep_time = max_time
-  max_time = 46
 
   fake_start_pairs <- test[, .(stop_id, walking_time)]
   fake_start_pairs[, time := max_time - walking_time]
@@ -200,7 +199,6 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
   # =============================================================================
 
   message("Running BFS + post-processing for ", length(starting_indices), " starting vertices...")
-  tic()
 
   # Worker function: BFS + walking join + amenity sum all in C++
   process_vertex <- function(start_index) {
@@ -227,7 +225,8 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
       start_vertex_index = start_index,
       amenity_sums = result$amenity_sums,
       mb_codes = all_mbs[result$mb_numeric],
-      travel_times = result$travel_times
+      travel_times = result$travel_times,
+      numeric_codes = result$mb_numeric
     )
   }
 
@@ -242,33 +241,66 @@ dijkstra_transit_routing <- function(doParallel, num_cores) {
   results_list <- results_list[!vapply(results_list, is.null, logical(1))]
   n <- length(results_list)
 
-  start_vertex_vec <- integer(n)
-  amenity_matrix <- matrix(0, nrow = n, ncol = length(amenity_cols), dimnames = list(NULL, amenity_cols))
-  mb_list <- vector("list", n)
-  tt_list <- vector("list", n)
+  #assemble empty vectors to re-assemble results
+  # start_vertex_vec <- integer(n)
+  # amenity_matrix <- matrix(0, nrow = n, ncol = length(amenity_cols), dimnames = list(NULL, amenity_cols))
+  # mb_list <- vector("list", n)
+  # tt_list <- vector("list", n)
+
+  start_vertex_vec <- rep(list(integer(n)), length(budgets))
+  amenity_matrix <- replicate(length(budgets), matrix(0, nrow = n, ncol = length(amenity_cols), dimnames = list(NULL, amenity_cols)), simplify = F)
+  mb_list <- replicate(length(budgets), vector("list", n), simplify = F)
+  tt_list <- replicate(length(budgets), vector("list", n), simplify = F)
 
   for(i in seq_len(n)) {
+
     r <- results_list[[i]]
-    start_vertex_vec[i] <- r$start_vertex_index
-    amenity_matrix[i, ] <- r$amenity_sums
-    mb_list[[i]] <- r$mb_codes
-    tt_list[[i]] <- r$travel_times
+
+    for(b in seq_along(budgets)) {
+
+      budget = budgets[b]
+
+      valid_rows <- which(r$travel_times >= (max_time - budget))
+
+      valid_numeric_lookups <- r$numeric_codes[valid_rows]
+
+      amenities_within_reach <- unname(colSums(cpp_amenity_matrix[valid_numeric_lookups, , drop = F]))
+
+      start_vertex_vec[[b]][i] <- r$start_vertex_index
+      amenity_matrix[[b]][i, ] <- amenities_within_reach
+      mb_list[[b]][[i]] <- r$mb_codes[valid_rows]
+      tt_list[[b]][[i]] <- r$travel_times[valid_rows]
+
+    }
+
+    # start_vertex_vec[i] <- r$start_vertex_index
+    # amenity_matrix[i, ] <- r$amenity_sums
+    # mb_list[[i]] <- r$mb_codes
+    # tt_list[[i]] <- r$travel_times
+
   }
 
-  all_results <- data.table(
-    start_vertex_index = start_vertex_vec,
-    as.data.table(amenity_matrix),
-    mesh_block_list = mb_list,
-    travel_times = tt_list
-  )
 
-  all_results[, stop_id := vertex_stop_ids[start_vertex_index]]
 
-  toc()
+  map(1:length(budgets), .f = function(b) {
+
+    all_results <- data.table(
+      start_vertex_index = start_vertex_vec[[b]],
+      as.data.table(amenity_matrix[[b]]),
+      mesh_block_list = mb_list[[b]],
+      travel_times = tt_list[[b]]
+    )
+
+    all_results[, stop_id := vertex_stop_ids[start_vertex_index]]
+
+  }) -> results
+
+  names(results) = paste0('_',budgets)
+
   end_time <- Sys.time()
   message('total time elapsed:', (end_time - start_time))
 
-  return(all_results)
+  return(results)
 }
 
 

@@ -28,6 +28,7 @@ source('gtfs_files/find_starting_indices.R')
 source('gtfs_files/create_master_amenity_mb_dict.R')
 source('gtfs_files/dijkstra/dijkstra_routing.R')
 source('gtfs_files/final_mesh_block_result.R')
+source('gtfs_files/link_results_to_mb.R')
 
 #settings - core count and whether to enable parallel processing
   #enable parallel processing (required for sub ~4 hour processing time)
@@ -52,10 +53,9 @@ source('gtfs_files/final_mesh_block_result.R')
   # employment_csv_path <- 'sf_input/employment_dzn.csv'
 
 #this script stores isochrone outputs in stop_isochrones, so we need to reset the files as to not mix two gtfs schedules together
-reset_storage()
 
-tic.clearlog()
-tic("Total pipeline")
+
+reset_storage()
 
 #set gtfs parameters
 gtfs_parameters =  list(
@@ -64,79 +64,68 @@ gtfs_parameters =  list(
   city = 'melbourne'
 )
 
-isochrone_params = list(
-  start_time_ = "8:59:00",
-  time_limit_  = hms("9:45:00"),
-  xfer_penalty_ = hms("00:05:00")
-)
-
-max_time <- 46
-#preload hash tables and gtfs tables for use later
-tic("initialise_gtfs")
-initialise_gtfs(gtfs_parameters, isochrone_params)
-toc(log = TRUE)
-
-#get stops list
-gtfs_pre_stops <- unique_stops
-
-#get stops sf
-stops_sf <- stops %>%
-  mutate(stop_id = as.character(stop_id)) %>%
-  filter(stop_id %in% gtfs_pre_stops)
-
-tic("read mb_sf")
-mb_sf <- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
+mb_sf <<- read_sf('~/Documents/r_projects/shapefiles/MB_2021_AUST_SHP_GDA2020/MB_2021_AUST_GDA2020.shp') %>%
   filter(GCC_NAME21 == 'Greater Melbourne') %>%
   st_transform(7855)
-toc(log = TRUE)
 
-tic("get_transit_ufi_dict")
 transit_ufi_dict <- get_transit_ufi_dict()
-toc(log = TRUE)
 
-tic("calculate_walking_distances")
 walking_distances <- calculate_walking_distances()
-toc(log = TRUE)
 
-tic("generate_place_registry")
-place_registry <<- generate_place_registry(doParallel, num_cores)
-toc(log = TRUE)
-
-tic("get_master_mb_ufi")
 master_mb_ufi <<- get_master_mb_ufi(mb_sf)
 master_mb_ufi[, UFI := as.character(UFI)]
-toc(log = TRUE)
 
-tic("read all_walk_raw")
 all_walk_raw <- rbindlist(lapply(list.files('walking_isochrones_sa2/', full.names = TRUE), fread))
 all_walk_raw[, start_UFI := as.character(start_UFI)]
 all_walk_raw[, UFI := as.character(UFI)]
-toc(log = TRUE)
 
-tic("link_walk_stops")
 walking_access_dict <<- link_walk_stops(all_walk_raw)
-toc(log = TRUE)
 
-tic("find_starting_indices")
-test <<- find_starting_indices(all_walk_raw)
-toc(log = TRUE)
-
-tic("create_master_amenity_mb_dict")
 master_amenity_dt <<- create_master_amenity_mb_dict(mb_sf)
-toc(log = TRUE)
 
-tic("dijkstra_transit_routing")
-all_results <<- dijkstra_transit_routing(doParallel, num_cores)
-toc(log = TRUE)
+################
 
-tic("package_final_sf")
-package_final_sf(mb_sf)
-toc(log = TRUE)
+budgets <<- c(45, 30, 15)
+max_time <<- max(budgets)
 
-toc(log = TRUE) # Total pipeline
+time_name <<- 'morning'
+start_times = c("07:55:00", "08:00:00", "08:05:00")
 
-benchmark_log <- tic.log(format = TRUE)
-dir.create("benchmarks", showWarnings = FALSE)
-writeLines(unlist(benchmark_log), paste0("benchmarks/benchmark_", format(Sys.time(), "%Y-%m-%d_%H%M"), "_optimized_2.txt"))
+start_time_results <- vector("list", 3)
+
+for(i in 1:length(start_times)) {
+
+  start_time_ <<- start_times[i]
+
+  time_limit_ <<-  as.period(as.duration(hms(start_time_)) + dminutes(max_time))
+
+  #preload hash tables and gtfs tables for use later
+  initialise_gtfs(gtfs_parameters, start_time_, time_limit_)
+
+  #get stops list
+  gtfs_pre_stops <- unique_stops
+
+  #get stops sf
+  stops_sf <- stops %>%
+    mutate(stop_id = as.character(stop_id)) %>%
+    filter(stop_id %in% gtfs_pre_stops)
+
+
+  place_registry <<- generate_place_registry(doParallel, num_cores)
+
+  test <<- find_starting_indices(all_walk_raw)
+
+  all_results <<- dijkstra_transit_routing(doParallel, num_cores)
+
+  linked_back_to_mb <- link_results_to_mb(all_results, test)
+
+  start_time_results[[i]] <- linked_back_to_mb
+
+}
+
+
+
+
+#package_final_sf(mb_sf)
 
 

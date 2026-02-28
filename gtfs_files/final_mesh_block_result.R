@@ -1,42 +1,83 @@
 package_final_sf <- function(mb_sf) {
 
-  profvis({
 
-    all_res <- copy(all_results)
-    all_res[, name := names(vertex_to_index[start_vertex_index]) ]
+  #lets do 45 min budget first
 
-    #from find_starting_indices
-    starting_index_df <- test[,.(MB_CODE21, stop_id, walking_time)]
-    starting_index_df[, time := max_time - walking_time]
-    starting_index_df[, name := paste0(stop_id, '_', time)]
+  for(b in 1:length(budgets)) {
 
-    final_result_dt <- starting_index_df[all_res, on = c('name'), nomatch = NULL]
-    colnames(final_result_dt) <- janitor::make_clean_names(colnames(final_result_dt))
+    name = budgets[b]
+    result_file_name = file_name = paste0('trimmed_results_',time_name,'_',name)
+    score_file_name = file_name = paste0('trimmed_scores_',time_name,'_',name)
 
-    #summary(final_result_dt[,.(total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)])
+    jitter_list = list(start_time_results[[1]][[b]],
+                       start_time_results[[2]][[b]],
+                       start_time_results[[3]][[b]])
 
-    trimmed_results = final_result_dt[,.(mb_code21, mesh_block_list,travel_times, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
-      as.data.frame()
+    stacked_dt <- rbindlist(jitter_list)
 
-    qs::qsave(trimmed_results, 'qs/trimmed_results.qs')
+
+    averaged_dt <- stacked_dt[, lapply(.SD, mean),
+                              by = mb_code21,
+                              .SDcols = c('jobs', 'total_open_space_area', 'n_supermarkets', 'n_sport_facility', 'n_education_centre', 'n_child_care', 'n_tertiary_institution', 'n_hospital', 'n_health_facility')]
+
+    mean_reach = jitter_list[[2]][, .(mb_code21, mesh_block_list, travel_times)]
+
+    trimmed_results = as.data.frame(averaged_dt[mean_reach, on = 'mb_code21'])
+
+    qs::qsave((trimmed_results), paste0('qs/trimmed_results/',result_file_name,'.qs'))
 
     trimmed_scores <- trimmed_results %>%
-      select(!c(mesh_block_list, travel_times)) %>%
-      mutate(jobs = round(jobs,2)) %>%
-      mutate(across(!mb_code21, ~percent_rank(.x))) %>%
-      mutate(total_score = rowSums(across(!mb_code21)), MB_CODE21 = mb_code21)
+        select(!c(mesh_block_list, travel_times)) %>%
+        mutate(jobs = round(jobs,2)) %>%
+        mutate(across(!mb_code21, ~percent_rank(.x))) %>%
+        mutate(total_score = rowSums(across(!mb_code21)), MB_CODE21 = mb_code21)
 
-    qs::qsave(trimmed_scores, 'qs/trimmed_scores.qs')
+      qs::qsave(trimmed_scores, paste0('qs/trimmed_scores/',score_file_name,'.qs'))
 
-    final_result <- trimmed_scores %>%
-      select(!mb_code21) %>%
-      left_join(mb_sf, by = 'MB_CODE21')
+      final_result <- trimmed_scores %>%
+        select(!mb_code21) %>%
+        left_join(mb_sf, by = 'MB_CODE21')
 
-    write_sf(final_result, 'sf_output/final_result.gpkg', append = F)
+      write_sf(final_result, paste0('sf_output/result_sfs/', time_name, name, 'final_result.gpkg'), append = F)
 
-    return(final_result)
+  }
 
-  })
+
+
+    # for(i in 1:length(all_results)) {
+    #
+    #   name = names(all_results)[i]
+    #
+    #
+    #   #summary(final_result_dt[,.(total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)])
+    #
+    #   trimmed_results = final_result_dt[,.(mb_code21, mesh_block_list,travel_times, jobs, total_open_space_area, n_supermarkets, n_sport_facility, n_education_centre, n_child_care, n_tertiary_institution, n_hospital, n_health_facility)] %>%
+    #     as.data.frame()
+    #
+    #   file_name = paste0(str_replace_all(start_time_, ":",'-'),name)
+    #
+    #   qs::qsave(trimmed_results, paste0('qs/budgets/',file_name,'.qs'))
+
+      # trimmed_scores <- trimmed_results %>%
+      #   select(!c(mesh_block_list, travel_times)) %>%
+      #   mutate(jobs = round(jobs,2)) %>%
+      #   mutate(across(!mb_code21, ~percent_rank(.x))) %>%
+      #   mutate(total_score = rowSums(across(!mb_code21)), MB_CODE21 = mb_code21)
+      #
+      # qs::qsave(trimmed_scores, 'qs/trimmed_scores.qs')
+
+      # final_result <- trimmed_scores %>%
+      #   select(!mb_code21) %>%
+      #   left_join(mb_sf, by = 'MB_CODE21')
+      #
+      # write_sf(final_result, 'sf_output/final_result.gpkg', append = F)
+
+
+
+    # }
+
+
+
 
 
 

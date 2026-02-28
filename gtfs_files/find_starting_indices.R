@@ -12,9 +12,7 @@ find_starting_indices <- function(all_walk_raw) {
 
   sources <- unique(place_registry[, .(stop_id, time = minutes_until_time_limit)])
 
-  mb_test <- master_mb_ufi
-
-  test <- mb_test[all_walk, on = c('UFI' = 'start_UFI'), nomatch = 0L]
+  test <- master_mb_ufi[all_walk, on = c('UFI' = 'start_UFI'), nomatch = 0L]
 
   #test <- test[, .SD[which.min(walking_time)], by = 'MB_CODE21', allow.cartesian = T]
 

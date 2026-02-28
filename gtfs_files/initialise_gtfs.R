@@ -1,11 +1,11 @@
-initialise_gtfs <- function(gtfs_parameters, isochrone_params) {
+initialise_gtfs <- function(gtfs_parameters, st, tl) {
 
   gtfs_prefilter <<- synfaxgtfs::read_gtfs(city = gtfs_parameters$city,
                                           mode_numbers = gtfs_parameters$mode_numbers,
                                           day = gtfs_parameters$day) %>%
     mutate(arrival_time = hms(arrival_time), departure_time = hms(departure_time)) %>%
-    filter(departure_time < isochrone_params$time_limit_,
-           departure_time > hms(isochrone_params$start_time_)) %>%
+    filter(departure_time < tl,
+           departure_time > hms( st)) %>%
     filter(!str_detect(stop_id, 'vic'))
 
 
